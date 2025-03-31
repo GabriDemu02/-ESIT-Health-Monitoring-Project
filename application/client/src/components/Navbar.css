@@ -1,0 +1,70 @@
+.navbar-layout {
+  display: grid;
+  grid-template-rows: var(--navbar-title-h) var(--navbar-profile-h) calc(
+      100vh - var(--navbar-title-h) - var(--navbar-profile-h) - 4 *
+        var(--padding-big)
+    );
+  gap: var(--padding-big);
+  width: 100%;
+  height: 100%;
+  padding: var(--padding-big);
+  border-right: 1px solid var(--font-color-m-transparent);
+}
+
+.logo-title {
+  font-family: "Gotham Black";
+  font-size: 24px;
+  margin-left: 8px;
+}
+
+.navbar-profile-card {
+  display: grid;
+  grid-template-columns: var(--navbar-profile-logo-s) auto var(
+      --navbar-profile-logout-s
+    );
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 0 16px #0742800d;
+}
+
+.navbar-profile-user-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: var(--navbar-profile-logo-s);
+  height: var(--navbar-profile-logo-s);
+  background: #d8f6ff;
+  border-radius: 4px;
+}
+
+.navbar-profile-logout {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: var(--navbar-profile-logout-s);
+  height: var(--navbar-profile-logout-s);
+  cursor: pointer;
+  border: 2px solid var(--font-color-m-transparent);
+  border-radius: 6px;
+}
+
+.navbar-doctor-patient-card {
+  display: grid;
+  grid-template-columns: 24px auto;
+  width: 100%;
+  height: 40px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.navbar-admin-control-item {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 40px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
