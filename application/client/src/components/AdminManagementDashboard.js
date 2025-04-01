@@ -83,7 +83,7 @@ function AdminManagementDashboard() {
     axios
       .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${remove}/reject`)
       .then((_) => {
-        setApplicationRequests((prev) => prev.filter((_, i) => i !== remove));
+        setApplicationRequests((prev) => prev.filter((application) => application.TaxCode !== remove));
       })
       .catch((error) => console.log(error));
   };
@@ -92,14 +92,14 @@ function AdminManagementDashboard() {
     axios
       .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
       .then((_) => {
-        setApplicationRequests((prev) => prev.filter((_, i) => i !== add));
+        setApplicationRequests((prev) => prev.filter((application) => application.TaxCode !== add));
       })
       .catch((error) => console.log(error));
   };
-
+  
   useEffect(() => {
     axios
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/applications`)
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/applications`) // questa è per ottenere tutte la candidature
       .then((res) => {
         setApplicationRequests(res.data);
       })
@@ -150,7 +150,7 @@ function AdminManagementDashboard() {
             overflow: "auto",
           }}
         >
-          {applicationRequests.map((application, i) => {
+          {applicationRequests.map((application, i) => { // applicationRequests deve essere un array di object [{name, surname, taxcode, telegram}]
             return (
               <div key={i} className="admin-management-application-layout">
                 <div>
@@ -179,7 +179,7 @@ function AdminManagementDashboard() {
                       </div>
                       Codice fiscale
                     </div>
-                    <div>{application.taxCode}</div>
+                    <div>{application.TaxCode}</div>
                   </div>
                   <div>
                     <div>
@@ -192,10 +192,10 @@ function AdminManagementDashboard() {
                   </div>
                 </div>
                 <div className="admin-management-application-operations">
-                  <div onClick={() => handleApplicationRejection(i)}>
+                  <div onClick={() => handleApplicationRejection(application.TaxCode)}>
                     Rifiuta
                   </div>
-                  <div onClick={() => handleApplicationReception(i)}>
+                  <div onClick={() => handleApplicationReception(application.TaxCode)}>
                     Accetta
                   </div>
                 </div>
