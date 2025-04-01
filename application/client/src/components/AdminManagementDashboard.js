@@ -10,10 +10,10 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 
-const socket = io(process.env.CLIENT_URL);
+const socket = io(process.env.REACT_APP_CLIENT_URL);
 
 function AdminManagementDashboard() {
-  const [applicationRequests, setApplicationRequests] = useState({});
+  const [applicationRequests, setApplicationRequests] = useState([]);
   const [availableDoctors, setAvailableDoctors] = useState([]); // si possono prendere da Admin.js
   const [availableBedrooms, setAvailableBedrooms] = useState([]);
 
@@ -81,7 +81,7 @@ function AdminManagementDashboard() {
 
   const handleApplicationRejection = (remove) => {
     axios
-      .post(`${process.env.SERVER_API_URL}/application/${id}/reject`)
+      .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${remove}/reject`)
       .then((_) => {
         setApplicationRequests((prev) => prev.filter((_, i) => i !== remove));
       })
@@ -90,7 +90,7 @@ function AdminManagementDashboard() {
 
   const handleApplicationReception = (add) => {
     axios
-      .post(`${process.env.SERVER_API_URL}/application/${id}/accept`)
+      .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
       .then((_) => {
         setApplicationRequests((prev) => prev.filter((_, i) => i !== add));
       })
@@ -99,7 +99,7 @@ function AdminManagementDashboard() {
 
   useEffect(() => {
     axios
-      .get(`${process.env.SERVER_API_URL}/applications`)
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/applications`)
       .then((res) => {
         setApplicationRequests(res.data);
       })
@@ -108,7 +108,7 @@ function AdminManagementDashboard() {
       });
 
     axios
-      .get(`${process.env.SERVER_API_URL}/bedrooms`)
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
       .then((res) => {
         setAvailableBedrooms(res.data);
       })

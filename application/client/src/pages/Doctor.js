@@ -13,7 +13,7 @@ import doctorProfileIcon from "../assets/doctor-profile-icon.png";
 import { useAuth } from "../AuthContext";
 import io from "socket.io-client";
 
-const socket = io(process.env.CLIENT_URL);
+const socket = io(process.env.REACT_APP_CLIENT_URL);
 
 function Doctor() {
   const { user } = useAuth();
@@ -50,12 +50,12 @@ function Doctor() {
     //   if (data.device === selectedPatient) setSelectedPatientLastValues(data);
     // };
 
-    socket.on(`/${data.device}/updates`, (data) => {
+    socket.on(`/${selectedPatient}/updates`, (data) => {
       setSelectedPatientLastValues(data);
     });
 
-    return () => socket.off(`/${data.device}/updates`);
-  });
+    return () => socket.off(`/${selectedPatient}/updates`);
+  }, [selectedPatient]);
 
   useEffect(() => {
     // todo: recupero dal database dell'ultima lettura effettuata per quel paziente

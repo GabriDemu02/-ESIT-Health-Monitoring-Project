@@ -5,8 +5,10 @@ require("dotenv").config();
 
 const http = require("http");
 const socketIo = require("socket.io");
+const app = express();
 const socketServer = http.createServer(app);
 const io = socketIo(socketServer);
+app.use(express.json());
 
 const AWS = require("aws-sdk");
 
@@ -29,7 +31,7 @@ const dbclient = new DynamoDBClient({
 
 const docClient = DynamoDBDocumentClient.from(dbclient);
 
-const app = express();
+
 app.use(cors());
 
 const server = awsIot.device({
@@ -104,11 +106,12 @@ server.on("message", (topic, payload) => {
   } else sendAllarm(device, false);
 });
 
-app.post("/signup", async (req, res) => {
+app.post("/api/signup", async (req, res) => {
+  console.log("Entered signup!");
   // controlla della api /signup
   try {
+    console.log(req.body);
     const { name, surname, taxCode, telegramUsername, password } = req.body; // dati ricevuti dal client
-    //console.log(req.body);
 
     let getRes;
 
@@ -121,21 +124,24 @@ app.post("/signup", async (req, res) => {
 
     if (getRes && getRes.Item) {
       return res.status(400).json({
-        error: "L'ID (taxCode) esiste già in tabella ApplicationRequests",
+        error: `L'utente "${taxCode}" ha già effettuato la candidatura`,
       });
     }
 
     // Controllo se l'utente è già un dottore
     const checkDoctor = {
       TableName: "AppliedDoctors",
-      Key: { taxCode },
+      FilterExpression: "TaxCode = :taxCode", // Definiamo la FilterExpression
+      ExpressionAttributeValues: {
+        ":taxCode": taxCode,
+      },
     };
-    getRes = await docClient.send(new GetCommand(checkDoctor));
+    scanRes = await docClient.send(new ScanCommand(checkDoctor));
 
-    if (getRes && getRes.Item) {
+    if (scanRes.Items && scanRes.Items.length > 0) {
       return res
         .status(400)
-        .json({ error: "L'ID (taxCode) esiste già in tabella AppliedDoctors" });
+        .json({ error: `L'utente "${taxCode}" è gia registrato nel sistema` });
     }
 
     // Aggiunta utente al db
@@ -160,20 +166,21 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
+app.post("/api/login", async (req, res) => {
+  const { email, password } = req.body; // dati ricevuti dal client
+  console.log(req.body);
+
+  let scanRes;
+
+  let role = email.split(".")[2];
+  console.log(role);
+  
   try {
-    const { email, password } = req.body; // dati ricevuti dal client
-    console.log(req.body);
-
-    let scanRes;
-
     // Controllo se l'utente è in lista d'attesa
     const checkLogin = {
-      TableName: "AppliedDoctors",
-      FilterExpression: "Email = :email", // Definiamo la FilterExpression
-      ExpressionAttributeValues: {
-        ":email": email,
-      },
+      TableName: role === "doctor" ? "AppliedDoctors" : "Admins",
+      FilterExpression: "email = :email", // Definiamo la FilterExpression
+      ExpressionAttributeValues: { ":email": email }
     };
     scanRes = await docClient.send(new ScanCommand(checkLogin));
 
@@ -182,10 +189,10 @@ app.post("/login", async (req, res) => {
     }
 
     // Se esiste, prendo il primo elemento
-    const user = scanRes.Items[0];
+    const user = {...scanRes.Items[0], role: role};
 
     // Verifico che la password sia la medesima
-    if (user.Password !== password) {
+    if (user.password !== password) {
       return res.status(401).json({ error: "Password errata" });
     }
     // Restituisco stato di corretto accesso e i dati utente
@@ -199,6 +206,114 @@ app.post("/login", async (req, res) => {
       message: "Errore interno nel controllo dell'utente su DynamoDB",
     });
   }
+
+   
+});
+
+// effettuo il controllo per il rifiuto candidatura
+app.post("/api/application/:id/reject", async (req, res) => {
+
+  try {
+    const { taxCode } = req.body;
+
+    let scanRes;
+
+    // Controllo se l'utente è in lista d'attesa
+    const checkApplication = {
+      TableName: "ApplicationRequests",
+      FilterExpression: "TaxCode = :taxCode",  // Definiamo la FilterExpression
+      ExpressionAttributeValues: {
+        ":taxCode": taxCode,
+      },
+    };
+    scanRes = await docClient.send(new ScanCommand(checkApplication));
+
+    if (!scanRes.Items || scanRes.Items.length === 0) {
+      return res.status(404).json({ error: "Candidatura non trovata." });
+    }
+    // Se esiste, prendo il primo elemento
+    const application = scanRes.Items[0];
+
+    const refuse = {
+      TableName: "ApplicationRequests",
+      Key: {TaxCode: taxCode}
+    };
+    const delRes = await docClient.send(new DeleteCommand(refuse));
+
+    // Se l'elemento non esiste, il risultato potrebbe non contenere l'elemento cancellato
+    if (!delRes.Attributes) {
+      return res.status(404).json({ error: "Elemento non trovato" });
+    }
+
+    return res.status(200).json({
+      message: "Elemento eliminato con successo"
+    });
+
+
+  } catch (error) {
+    console.error("Errore nel rifiuto candidatura: ", error);
+    return res.status(500).json({message: 
+      "Errore interno."});
+  }
+
+});
+
+// effettuo il controllo per il rifiuto candidatura
+app.post("/api/application/:id/accept", async (req, res) => {
+
+  try {
+    const { taxCode } = req.body;
+
+    let scanRes;
+
+    // Controllo se l'utente è in lista d'attesa
+    const checkApplication = {
+      TableName: "ApplicationRequests",
+      FilterExpression: "TaxCode = :taxCode",  // Definiamo la FilterExpression
+      ExpressionAttributeValues: {
+        ":taxCode": taxCode,
+      },
+    };
+    scanRes = await docClient.send(new ScanCommand(checkApplication));
+
+    if (!scanRes.Items || scanRes.Items.length === 0) {
+      return res.status(404).json({ error: "Candidatura non trovata." });
+    }
+    // Se esiste, prendo il primo elemento
+    const application = scanRes.Items[0];
+
+    const deleteParams = {
+      TableName: "ApplicationRequests",
+      Key: {TaxCode: taxCode}
+    };
+    const delRes = await docClient.send(new DeleteCommand(deleteParams));
+
+    // Se l'elemento non esiste, il risultato potrebbe non contenere l'elemento cancellato
+    if (!delRes.Attributes) {
+      return res.status(404).json({ error: "Elemento non trovato" });
+    }
+
+    // Aggiunta utente al db
+    const newDoc = {
+      TableName: "AppliedDoctors",
+      Item: {
+        TaxCode: taxCode,
+        Name: application.Name,
+        Surname: application.Surname,
+        TelegramUsername: application.TelegramUsername,
+        Password: application.Password
+      }
+    };
+    await docClient.send(new PutCommand(newDoc));
+
+    return res.json({message: "Nuovo dottore accettato!", }); // registrazione conclusa senza errori
+
+  } catch (error) {
+    console.error("Errore nel rifiuto candidatura: ", error);
+    return res.status(500).json({message: 
+      "Errore interno."});
+  }
+
 });
 
 app.listen(process.env.SERVER_PORT, () => {
