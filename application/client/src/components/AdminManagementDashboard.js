@@ -122,7 +122,8 @@ function AdminManagementDashboard() {
 
     return () => socket.off("newApplicationRequest");
   }, []);
-
+  
+  
   return (
     <div className="admin-management-layout">
       <div className="admin-management-section">
