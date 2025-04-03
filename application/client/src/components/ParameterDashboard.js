@@ -15,6 +15,7 @@ import { faEdit } from "@fortawesome/free-solid-svg-icons";
 import Slider from "rc-slider";
 import "rc-slider/assets/index.css";
 import styled from "styled-components";
+import axios from "axios";
 
 function Measurement({ label, value, children }) {
   return (
@@ -140,6 +141,8 @@ const ThresholdsSlider = styled(Slider)`
 `;
 
 function ParameterDashboard({
+  patients,
+  selectedPatient,
   parameter,
   unit,
   color,
@@ -150,25 +153,24 @@ function ParameterDashboard({
   maxThreshold,
 }) {
   const [thresholds, setThresholds] = useState([minThreshold, maxThreshold]);
-  // todo: poi ricavare i dati in maniera seria
   const [data, setData] = useState([]);
-  function generateData() {
-    const createdData = [];
-    const startTime = new Date();
-    startTime.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 288; i++) {
-      const hours = String(startTime.getHours()).padStart(2, "0");
-      const minutes = String(startTime.getMinutes()).padStart(2, "0");
-      const timestamp = `${hours}:${minutes}`;
-      const value = Math.floor(Math.random() * (90 - 60 + 1)) + 60;
-      createdData.push({ timestamp, value });
-      startTime.setMinutes(startTime.getMinutes() + 5);
-    }
-    return createdData;
-  }
+  // function generateData() {
+  //   const createdData = [];
+  //   const startTime = new Date();
+  //   startTime.setHours(0, 0, 0, 0);
+  //   for (let i = 0; i < 288; i++) {
+  //     const hours = String(startTime.getHours()).padStart(2, "0");
+  //     const minutes = String(startTime.getMinutes()).padStart(2, "0");
+  //     const timestamp = `${hours}:${minutes}`;
+  //     const value = Math.floor(Math.random() * (90 - 60 + 1)) + 60;
+  //     createdData.push({ timestamp, value });
+  //     startTime.setMinutes(startTime.getMinutes() + 5);
+  //   }
+  //   return createdData;
+  // }
 
   const [editThresholds, setEditThresholds] = useState(false);
-  const [newThresholds, setNewThresholds] = useState(thresholds);
+  const [newThresholds, setNewThresholds] = useState([]);
   const nChartReferenceLine = 10;
 
   const [selectedDate, setSelectedDate] = useState(
@@ -176,8 +178,23 @@ function ParameterDashboard({
   );
 
   useEffect(() => {
-    setData(generateData());
-  }, []);
+    axios
+      .get(
+        `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds`
+      )
+      .then((res) => setNewThresholds(res.data))
+      .catch((error) => console.log(error));
+
+    // setData(generateData());
+    axios
+      .get(
+        `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/history/${selectedDate}`
+      )
+      .then((res) => setData(res.data))
+      .catch((error) => console.log(error));
+
+    // TODO: socket per leggere i dati che arrivano nella data odierna (statisticamente ogni 5min)
+  }, [selectedPatient, selectedDate]);
 
   return (
     <div className="parameter-dashboard-layout">
@@ -302,8 +319,21 @@ function ParameterDashboard({
               <div
                 className="parameter-dashboard-edit-button confirm"
                 onClick={() => {
-                  setThresholds(newThresholds);
-                  setEditThresholds(false);
+                  axios
+                    .post(
+                      // TODO: selectedPatient ora non esiste
+                      `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds`,
+                      {
+                        minThreshold: newThresholds[0],
+                        maxThreshold: newThresholds[1],
+                      },
+                      { headers: { "Content-Type": "application/json" } }
+                    )
+                    .then((_) => {
+                      setThresholds(newThresholds);
+                      setEditThresholds(false);
+                    })
+                    .catch((error) => console.log(error));
                 }}
               >
                 Conferma

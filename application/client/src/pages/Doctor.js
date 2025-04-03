@@ -12,6 +12,7 @@ import ParameterDashboard from "../components/ParameterDashboard";
 import doctorProfileIcon from "../assets/doctor-profile-icon.png";
 import { useAuth } from "../AuthContext";
 import io from "socket.io-client";
+import axios from "axios";
 
 const socket = io(process.env.REACT_APP_CLIENT_URL);
 
@@ -19,46 +20,39 @@ function Doctor() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
-
-  // todo: lettura dal database
-  const [patients, setPatients] = useState({
-    "hm-device-001": {
-      name: "Pietro Frongia",
-      room: "102A",
-      device: true,
-    },
-    // "hm-device-002": {
-    //   name: "Alberto Pricope",
-    //   room: "102B",
-    //   device: false,
-    // },
-  });
-
-  const [selectedPatientLastValues, setSelectedPatientLastValues] = useState({
-    device: "hm-device-001",
-    heartRate: 12,
-    heartRateAvg: 12,
-    bloodPressure: 34,
-    bloodPressureAvg: 34,
-  });
+  const [patients, setPatients] = useState({});
+  const [selectedPatientDeviceLastValues, setSelectedPatientDeviceLastValues] =
+    useState({});
+  const [emergencies, setEmergencies] = useState([]);
 
   useEffect(() => {
-    // const socket = new WebSocket("ws://localhost:4000");
+    axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/doctor/${user.id}/patients`)
+      .then((res) => setPatients(res.data))
+      .catch((error) => console.log(error));
+  }, []);
 
-    // socket.onmessage = (event) => {
-    //   const data = JSON.parse(event.data);
-    //   if (data.device === selectedPatient) setSelectedPatientLastValues(data);
-    // };
+  useEffect(() => {
+    axios
+      .get(
+        `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/latest`
+      )
+      .then((res) => setSelectedPatientDeviceLastValues(res.data))
+      .catch((error) => console.log(error));
 
-    socket.on(`/${selectedPatient}/updates`, (data) => {
-      setSelectedPatientLastValues(data);
+    axios
+      .get(
+        `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/emergencies`
+      )
+      .then((res) => setEmergencies(res.data))
+      .catch((error) => console.log(error));
+
+    socket.on(`/device/${patients[selectedPatient].device}/updates`, (data) => {
+      setSelectedPatientDeviceLastValues(data);
     });
 
-    return () => socket.off(`/${selectedPatient}/updates`);
-  }, [selectedPatient]);
-
-  useEffect(() => {
-    // todo: recupero dal database dell'ultima lettura effettuata per quel paziente
+    return () =>
+      socket.off(`/device/${patients[selectedPatient].device}/updates`);
   }, [selectedPatient]);
 
   return (
@@ -131,7 +125,7 @@ function Doctor() {
                         </div>
                         <div
                           className={`flex v-center font-xsm ${
-                            patients[patient].device
+                            patients[patient].deviceStatus
                               ? "device-active"
                               : "device-not-active"
                           }`}
@@ -144,7 +138,9 @@ function Doctor() {
                         >
                           <FontAwesomeIcon icon={faMicrochip} />
                           <span style={{ paddingLeft: "4px" }}>
-                            {patients[patient].device ? "Attivo" : "Non Attivo"}
+                            {patients[patient].deviceStatus
+                              ? "Attivo"
+                              : "Non Attivo"}
                           </span>
                         </div>
                       </div>
@@ -178,7 +174,7 @@ function Doctor() {
             <div>{patients[selectedPatient].room}</div>
             <div
               className={`flex v-center font-xsm ${
-                patients[selectedPatient].device
+                patients[selectedPatient].deviceStatus
                   ? "device-active"
                   : "device-not-active"
               }`}
@@ -190,30 +186,36 @@ function Doctor() {
             >
               <FontAwesomeIcon icon={faMicrochip} />
               <span style={{ paddingLeft: "4px" }}>
-                {patients[selectedPatient].device ? "Attivo" : "Non Attivo"}
+                {patients[selectedPatient].deviceStatus
+                  ? "Attivo"
+                  : "Non Attivo"}
               </span>
             </div>
           </div>
           <div>
             <ParameterDashboard
+              patients={patients}
+              selectedPatient={selectedPatient}
               parameter="Battito Cardiaco"
               unit="bpm"
               icon={faHeart}
-              value={selectedPatientLastValues.heartRate}
-              avg={selectedPatientLastValues.heartRateAvg}
+              value={selectedPatientDeviceLastValues.heartRate}
+              avg={selectedPatientDeviceLastValues.heartRateAvg}
               color="var(--red-color)"
-              minThreshold={0}
-              maxThreshold={250}
+              minThreshold={process.env.REACT_APP_HEART_RATE_MIN_THRESHOLD}
+              maxThreshold={process.env.REACT_APP_HEART_RATE_MAX_THRESHOLD}
             />
             <ParameterDashboard
+              patients={patients}
+              selectedPatient={selectedPatient}
               parameter="Pressione Sanguigna"
               unit="mmHg"
               icon={faDroplet}
-              value={selectedPatientLastValues.bloodPressure}
-              avg={selectedPatientLastValues.bloodPressureAvg}
+              value={selectedPatientDeviceLastValues.bloodPressure}
+              avg={selectedPatientDeviceLastValues.bloodPressureAvg}
               color="var(--orange-color)"
-              minThreshold={0}
-              maxThreshold={250}
+              minThreshold={process.env.REACT_APP_BLOOD_PRESSURE_MIN_THRESHOLD}
+              maxThreshold={process.env.REACT_APP_BLOOD_PRESSURE_MAX_THRESHOLD}
             />
           </div>
           <div className="patient-dashboard-allarms-layout">
@@ -231,25 +233,29 @@ function Doctor() {
                 </tr>
               </thead>
               <tbody>
-                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => {
+                {emergencies.map((emergency, i) => {
                   return (
                     <tr key={i}>
-                      <th className="bold">16 Feb 2025</th>
-                      <th>12:05:12</th>
+                      <th className="bold">{emergency.date}</th>
+                      <th>{emergency.time}</th>
                       <th>
-                        2<span className="font-xsm thin">min</span> 2
-                        <span className="font-xsm thin">sec</span>
+                        {/* TODO: formattare la durata in <mm>min <ss>sec */}
+                        {emergency.duration}
+                        {/* 2<span className="font-xsm thin">min</span> 2
+                        <span className="font-xsm thin">sec</span> */}
                       </th>
-                      <th className="bold">Pressione Sanguigna</th>
+                      <th className="bold">{emergency.parameter}</th>
                       <th>
-                        <span className="bold">156</span>
-                        <span className="font-xsm thin">mmHg</span>
+                        <span className="bold">{emergency.value}</span>
+                        <span className="font-xsm thin">{emergency.unit}</span>
                       </th>
                       <th>
-                        80<span className="font-xsm thin">mmHg</span>
+                        {emergency.minThreshold}
+                        <span className="font-xsm thin">{emergency.unit}</span>
                       </th>
                       <th>
-                        124<span className="font-xsm thin">mmHg</span>
+                        {emergency.maxThreshold}
+                        <span className="font-xsm thin">{emergency.unit}</span>
                       </th>
                     </tr>
                   );

@@ -121,16 +121,18 @@ function Signup({ onSuccess }) {
     }
 
     if (validRequest) {
-      const request = {
-        name: nameTrim,
-        surname: surnameTrim,
-        taxCode: taxCodeTrim,
-        telegramUsername: telegramUsernameTrim,
-        password: passwordTrim,
-      };
-      console.log(request);
       axios
-        .post(`${process.env.REACT_APP_SERVER_API_URL}/signup`, request, { headers: { "Content-Type": "application/json", }, })
+        .post(
+          `${process.env.REACT_APP_SERVER_API_URL}/signup`,
+          {
+            name: nameTrim,
+            surname: surnameTrim,
+            taxCode: taxCodeTrim,
+            telegramUsername: telegramUsernameTrim,
+            password: passwordTrim,
+          },
+          { headers: { "Content-Type": "application/json" } }
+        )
         .then(() => {
           onSuccess(true);
           navigate("/success");

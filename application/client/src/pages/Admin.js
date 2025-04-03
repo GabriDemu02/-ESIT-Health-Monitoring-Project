@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import adminProfileIcon from "../assets/admin-profile-icon.png";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -6,25 +6,43 @@ import { faFileLines, faUsers } from "@fortawesome/free-solid-svg-icons";
 import AdminDoctorsPatientDashboard from "../components/AdminDoctorsPatientDashboard";
 import AdminManagementDashboard from "../components/AdminManagementDashboard";
 import { useAuth } from "../AuthContext";
+import axios from "axios";
 
 function Admin() {
   const { user } = useAuth();
   const [selectedOperation, setSelectedOperation] = useState(0);
+
+  const [doctors, setDoctors] = useState([]);
+  const [patients, setPatients] = useState([]);
 
   const operations = [
     {
       id: 0,
       name: "Medici e Pazienti",
       icon: faUsers,
-      component: <AdminDoctorsPatientDashboard />,
+      component: (
+        <AdminDoctorsPatientDashboard doctors={doctors} patients={patients} />
+      ),
     },
     {
       id: 1,
       name: "Gestione ospedale",
       icon: faFileLines,
-      component: <AdminManagementDashboard />,
+      component: <AdminManagementDashboard doctors={doctors} />,
     },
   ];
+
+  useEffect(() => {
+    axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/doctors`)
+      .then((res) => setDoctors(res.data))
+      .catch((error) => console.log(error));
+
+    axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/patients`)
+      .then((res) => setPatients(res.data))
+      .catch((error) => console.log(error));
+  }, []);
 
   return (
     <div className="page-layout">

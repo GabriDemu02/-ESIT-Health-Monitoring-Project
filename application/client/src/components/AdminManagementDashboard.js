@@ -11,10 +11,10 @@ import axios from "axios";
 import io from "socket.io-client";
 
 const socket = io(process.env.REACT_APP_CLIENT_URL);
+const socket = io(process.env.REACT_APP_CLIENT_URL);
 
-function AdminManagementDashboard() {
-  const [applicationRequests, setApplicationRequests] = useState([]);
-  const [availableDoctors, setAvailableDoctors] = useState([]); // si possono prendere da Admin.js
+function AdminManagementDashboard({ doctors }) {
+  const [applicationRequests, setApplicationRequests] = useState({});
   const [availableBedrooms, setAvailableBedrooms] = useState([]);
 
   const [name, setName] = useState("");
@@ -81,9 +81,13 @@ function AdminManagementDashboard() {
 
   const handleApplicationRejection = (remove) => {
     axios
-      .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${remove}/reject`)
+      .post(
+        `${process.env.REACT_APP_SERVER_API_URL}/application/${remove}/reject`
+      )
       .then((_) => {
-        setApplicationRequests((prev) => prev.filter((application) => application.TaxCode !== remove));
+        setApplicationRequests((prev) =>
+          prev.filter((application) => application.TaxCode !== remove)
+        );
       })
       .catch((error) => console.log(error));
   };
@@ -91,15 +95,18 @@ function AdminManagementDashboard() {
   const handleApplicationReception = (add) => {
     axios
       .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
+      .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
       .then((_) => {
-        setApplicationRequests((prev) => prev.filter((application) => application.TaxCode !== add));
+        setApplicationRequests((prev) =>
+          prev.filter((application) => application.TaxCode !== add)
+        );
       })
       .catch((error) => console.log(error));
   };
-  
+
   useEffect(() => {
     axios
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/applications`) // questa è per ottenere tutte la candidature
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/applications`)
       .then((res) => {
         setApplicationRequests(res.data);
       })
@@ -108,6 +115,7 @@ function AdminManagementDashboard() {
       });
 
     axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
       .get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
       .then((res) => {
         setAvailableBedrooms(res.data);
@@ -122,8 +130,7 @@ function AdminManagementDashboard() {
 
     return () => socket.off("newApplicationRequest");
   }, []);
-  
-  
+
   return (
     <div className="admin-management-layout">
       <div className="admin-management-section">
@@ -151,7 +158,8 @@ function AdminManagementDashboard() {
             overflow: "auto",
           }}
         >
-          {applicationRequests.map((application, i) => { // applicationRequests deve essere un array di object [{name, surname, taxcode, telegram}]
+          {applicationRequests.map((application, i) => {
+            // applicationRequests deve essere un array di object [{name, surname, taxcode, telegram}]
             return (
               <div key={i} className="admin-management-application-layout">
                 <div>
@@ -193,10 +201,18 @@ function AdminManagementDashboard() {
                   </div>
                 </div>
                 <div className="admin-management-application-operations">
-                  <div onClick={() => handleApplicationRejection(application.TaxCode)}>
+                  <div
+                    onClick={() =>
+                      handleApplicationRejection(application.TaxCode)
+                    }
+                  >
                     Rifiuta
                   </div>
-                  <div onClick={() => handleApplicationReception(application.TaxCode)}>
+                  <div
+                    onClick={() =>
+                      handleApplicationReception(application.TaxCode)
+                    }
+                  >
                     Accetta
                   </div>
                 </div>
@@ -272,10 +288,16 @@ function AdminManagementDashboard() {
                 style={{ width: "50%", marginRight: "8px" }}
               >
                 <label>Medico curante:</label>
-                <select value={doctor}>
+                <select
+                  value={doctor}
+                  onChange={(e) => setDoctor(e.target.value)}
+                >
                   <option value="">---</option>
-                  <option value="m.meloni1">m.meloni1</option>
-                  <option value="g.demurtas1">g.demurtas1</option>
+                  {doctors.map((availableDoctor) => {
+                    <option key={availableDoctor.id} value={availableDoctor.id}>
+                      {availableDoctor.id}
+                    </option>;
+                  })}
                 </select>
                 <div className="form-input-error"></div>
               </div>
@@ -285,10 +307,16 @@ function AdminManagementDashboard() {
                 style={{ width: "50%", marginLeft: "8px" }}
               >
                 <label>Stanza:</label>
-                <select value={bedroom}>
+                <select
+                  value={bedroom}
+                  onChange={(e) => setBedroom(e.target.value)}
+                >
                   <option value="">---</option>
-                  <option value="102A">102A</option>
-                  <option value="102B">102B</option>
+                  {availableBedrooms.map((bedroom) => {
+                    <option key={bedroom} value={bedroom}>
+                      {bedroom}
+                    </option>;
+                  })}
                 </select>
                 <div className="form-input-error"></div>
               </div>

@@ -53,16 +53,19 @@ function Login() {
 
     if (validRequest) {
       axios
-        .post(`${process.env.REACT_APP_SERVER_API_URL}/login`, {
-          email: emailTrim,
-          password: passwordTrim,
-        }, 
-        { headers: { "Content-Type": "application/json", }, })
+        .post(
+          `${process.env.REACT_APP_SERVER_API_URL}/login`,
+          {
+            emailTrim,
+            passwordTrim,
+          },
+          { headers: { "Content-Type": "application/json" } }
+        )
         .then((res) => {
-          console.log(res.data.user)
-          localStorage.setItem("user", res.data.user);
-          login(res.data.user);
-          navigate(res.data.user.role === "admin" ? "/admin" : "/");
+          let user = res.data.user;
+          localStorage.setItem("user", user);
+          login(user);
+          navigate(user.role === "admin" ? "/admin" : "/");
         })
         .catch((error) => {
           globalError.current.innerText =

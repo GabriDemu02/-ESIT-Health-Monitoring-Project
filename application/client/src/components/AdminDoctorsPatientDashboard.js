@@ -7,7 +7,7 @@ import {
   faUserDoctor,
 } from "@fortawesome/free-solid-svg-icons";
 
-function AdminDoctorsPatientDashboard() {
+function AdminDoctorsPatientDashboard({ doctors, patients }) {
   const [searchDoctor, setSearchDoctor] = useState("");
   const [searchPatient, setSearchPatient] = useState("");
   const [doctorFilter, setDoctorFilter] = useState("");
@@ -60,15 +60,17 @@ function AdminDoctorsPatientDashboard() {
               </tr>
             </thead>
             <tbody>
-              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => {
+              {doctors.map((doctor) => {
                 return (
-                  <tr key={i}>
-                    <th>m.meloni1</th>
-                    <th className="bold">Maurizio Meloni</th>
-                    <th>MLNMRZ01M24G015Q</th>
-                    <th>m.meloni1@hm.doctor.it</th>
-                    <th>@sigmoris</th>
-                    <th>2</th>
+                  <tr key={doctor.id}>
+                    <th>{doctor.id}</th>
+                    <th className="bold">
+                      {doctor.name} {doctor.surname}
+                    </th>
+                    <th>{doctor.taxCode}</th>
+                    <th>{doctor.email}</th>
+                    <th>{doctor.telegramUsername}</th>
+                    <th>{doctor.patients}</th>
                   </tr>
                 );
               })}
@@ -121,10 +123,10 @@ function AdminDoctorsPatientDashboard() {
                 onChange={(e) => setDoctorFilter(e.target.value)}
               >
                 <option value="">---</option>
-                {["m.meloni1", "g.demurtas1"].map((option) => {
+                {doctors.map((doctor) => {
                   return (
-                    <option key={option} value={option}>
-                      {option}
+                    <option key={doctor.id} value={doctor.id}>
+                      {doctor.id}
                     </option>
                   );
                 })}
@@ -146,21 +148,26 @@ function AdminDoctorsPatientDashboard() {
               </tr>
             </thead>
             <tbody>
-              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => {
+              {patients.map((patient) => {
                 return (
-                  <tr key={i}>
-                    <th>6534-0012</th>
-                    <th className="bold">Pietro Frongia</th>
-                    <th>PTRFRN02M08G015Q</th>
-                    <th>102A</th>
-                    <th>Attivo</th>
+                  <tr key={patient.id}>
+                    <th>{patient.id}</th>
+                    <th className="bold">
+                      {patient.name} {patient.surname}
+                    </th>
+                    <th>{patient.taxCode}</th>
+                    <th>{patient.bedroom}</th>
+                    <th>{patient.deviceStatus}</th>
                     <th className="bold">
                       <select
-                        value="m.meloni1"
+                        value={patient.doctor}
                         className="admin-dashboard-doctors-patients-patient-select"
                       >
-                        <option value="m.meloni1">m.meloni1</option>
-                        <option value="g.demurtas1">g.demurtas1</option>
+                        {doctors.map((doctor) => {
+                          <option key={doctor.id} value={doctor.id}>
+                            {doctor.id}
+                          </option>;
+                        })}
                       </select>
                     </th>
                     <th>
