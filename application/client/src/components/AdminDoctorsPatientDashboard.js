@@ -6,8 +6,9 @@ import {
   faSearch,
   faUserDoctor,
 } from "@fortawesome/free-solid-svg-icons";
+import axios from "axios";
 
-function AdminDoctorsPatientDashboard({ doctors, patients }) {
+function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
   const [searchDoctor, setSearchDoctor] = useState("");
   const [searchPatient, setSearchPatient] = useState("");
   const [doctorFilter, setDoctorFilter] = useState("");
@@ -171,7 +172,21 @@ function AdminDoctorsPatientDashboard({ doctors, patients }) {
                       </select>
                     </th>
                     <th>
-                      <div className="admin-dashboard-doctors-patients-patient-release">
+                      <div
+                        className="admin-dashboard-doctors-patients-patient-release"
+                        onClick={(e) => {
+                          axios
+                            .post(
+                              `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.id}/release`
+                            )
+                            .then((_) => {
+                              const { [patient.id]: _, ...filteredPatients } =
+                                patients;
+                              setPatients(filteredPatients);
+                            })
+                            .catch((error) => console.log(error));
+                        }}
+                      >
                         Rilascia
                       </div>
                     </th>

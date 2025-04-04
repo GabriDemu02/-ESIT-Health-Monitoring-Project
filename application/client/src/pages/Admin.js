@@ -21,7 +21,11 @@ function Admin() {
       name: "Medici e Pazienti",
       icon: faUsers,
       component: (
-        <AdminDoctorsPatientDashboard doctors={doctors} patients={patients} />
+        <AdminDoctorsPatientDashboard
+          doctors={doctors}
+          patients={patients}
+          setPatients={setPatients}
+        />
       ),
     },
     {

@@ -15,7 +15,10 @@ import { faEdit } from "@fortawesome/free-solid-svg-icons";
 import Slider from "rc-slider";
 import "rc-slider/assets/index.css";
 import styled from "styled-components";
+import io from "socket.io-client";
 import axios from "axios";
+
+const socket = io(process.env.REACT_APP_CLIENT_URL);
 
 function Measurement({ label, value, children }) {
   return (
@@ -153,21 +156,7 @@ function ParameterDashboard({
   maxThreshold,
 }) {
   const [thresholds, setThresholds] = useState([minThreshold, maxThreshold]);
-  const [data, setData] = useState([]);
-  // function generateData() {
-  //   const createdData = [];
-  //   const startTime = new Date();
-  //   startTime.setHours(0, 0, 0, 0);
-  //   for (let i = 0; i < 288; i++) {
-  //     const hours = String(startTime.getHours()).padStart(2, "0");
-  //     const minutes = String(startTime.getMinutes()).padStart(2, "0");
-  //     const timestamp = `${hours}:${minutes}`;
-  //     const value = Math.floor(Math.random() * (90 - 60 + 1)) + 60;
-  //     createdData.push({ timestamp, value });
-  //     startTime.setMinutes(startTime.getMinutes() + 5);
-  //   }
-  //   return createdData;
-  // }
+  const [history, setHistory] = useState([]);
 
   const [editThresholds, setEditThresholds] = useState(false);
   const [newThresholds, setNewThresholds] = useState([]);
@@ -185,15 +174,22 @@ function ParameterDashboard({
       .then((res) => setNewThresholds(res.data))
       .catch((error) => console.log(error));
 
-    // setData(generateData());
     axios
       .get(
         `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/history/${selectedDate}`
       )
-      .then((res) => setData(res.data))
+      .then((res) => setHistory(res.data))
       .catch((error) => console.log(error));
 
-    // TODO: socket per leggere i dati che arrivano nella data odierna (statisticamente ogni 5min)
+    socket.on(
+      `/device/${patients[selectedPatient].device}/history/updates`,
+      (data) => {
+        setHistory([...history, data]);
+      }
+    );
+
+    return () =>
+      socket.off(`/device/${patients[selectedPatient].device}/history/updates`);
   }, [selectedPatient, selectedDate]);
 
   return (
@@ -227,15 +223,11 @@ function ParameterDashboard({
               setSelectedDate(e.target.value);
             }}
           />
-          {/* <div className="parameter-dashboard-day-button">
-            <FontAwesomeIcon icon={faCalendar} />
-            <span style={{ marginLeft: "4px" }}>16 Feb 2025</span>
-          </div> */}
         </div>
         <div style={{ padding: "8px 0" }}>
           <ResponsiveContainer width="100%" height={100}>
             <AreaChart
-              data={data}
+              data={history}
               margin={{ top: 0, left: 0, right: 0, bottom: 0 }}
             >
               <defs>
@@ -321,7 +313,6 @@ function ParameterDashboard({
                 onClick={() => {
                   axios
                     .post(
-                      // TODO: selectedPatient ora non esiste
                       `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds`,
                       {
                         minThreshold: newThresholds[0],
