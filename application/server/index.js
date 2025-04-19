@@ -8,13 +8,21 @@ const app = express();
 const socketServer = http.createServer(app);
 const io = socketIo(socketServer);
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, PutCommand, GetCommand, BatchGetCommand, QueryCommand, ScanCommand, DeleteCommand } = require("@aws-sdk/lib-dynamodb");
+const {
+  DynamoDBDocumentClient,
+  PutCommand,
+  GetCommand,
+  BatchGetCommand,
+  QueryCommand,
+  ScanCommand,
+  DeleteCommand,
+} = require("@aws-sdk/lib-dynamodb");
 
 const dbclient = new DynamoDBClient({
   region: "eu-north-1",
   credentials: {
-    accessKeyId: "AKIARHJJNAE7WBW763MI",
-    secretAccessKey: "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",
+    accessKeyId: process.env.ACCESS_KEY_ID,
+    secretAccessKey: process.env.SECRET_ACCESS_KEY,
   },
 });
 const docClient = DynamoDBDocumentClient.from(dbclient);
@@ -73,7 +81,7 @@ let avrgHR = new ReadingsAverage(30);
 let avrgBP = new ReadingsAverage(30);
 
 server.on("message", (topic, payload) => {
-  if (topic === MQTT_SUB_TOPIC) {
+  if (topic === process.env.MQTT_SUB_TOPIC) {
     const data = JSON.parse(payload.toString());
 
     let heartRate = undefined;
@@ -97,9 +105,9 @@ server.on("message", (topic, payload) => {
   }
 
   // Gestione del controllo del buzzer del device
-  if (bloodPressure > 120 || heartRate > 120) {
-    sendAllarm(device, true);
-  } else sendAllarm(device, false);
+  // if (bloodPressure > 120 || heartRate > 120) {
+  //   sendAllarm(device, true);
+  // } else sendAllarm(device, false);
 });
 
 app.post("/api/signup", async (req, res) => {
@@ -116,7 +124,9 @@ app.post("/api/signup", async (req, res) => {
     };
     const getRes = await docClient.send(new GetCommand(appGetParams));
     if (getRes && getRes.Item) {
-      return res.status(409).json({ error: `L'utente "${taxCode}" ha già effettuato la candidatura.`, });
+      return res.status(409).json({
+        error: `L'utente "${taxCode}" ha già effettuato la candidatura.`,
+      });
     }
 
     // Controllo se l'utente è già un dottore
@@ -124,11 +134,13 @@ app.post("/api/signup", async (req, res) => {
       TableName: DOC_DB,
       FilterExpression: "#Att = :Val",
       ExpressionAttributeNames: { "#Att": "taxCode" },
-      ExpressionAttributeValues: { ":Val": {S: taxCode} }
+      ExpressionAttributeValues: { ":Val": taxCode },
     };
     const scanRes = await docClient.send(new ScanCommand(docScanParams));
     if (scanRes.Items && scanRes.Items.length > 0) {
-      return res.status(409).json({ error: `L'utente "${taxCode}" è gia registrato come dottore!` });
+      return res.status(409).json({
+        error: `L'utente "${taxCode}" è gia registrato come dottore!`,
+      });
     }
 
     const newApp = {
@@ -145,8 +157,13 @@ app.post("/api/signup", async (req, res) => {
 
     res.json({ message: `L'tente "${taxCode}" candidato con successo!` }); // registrazione conclusa senza errori
   } catch (error) {
-    console.error(`Errore nella candidatura dell'utente "${taxCode}".\nCausa: `, error);
-    return res.status(500).json({ message: "Errore interno nella candidatura!", });
+    console.error(
+      `Errore nella candidatura dell'utente "${taxCode}".\nCausa: `,
+      error
+    );
+    return res
+      .status(500)
+      .json({ message: "Errore interno nella candidatura!" });
   }
 });
 
@@ -155,29 +172,30 @@ app.post("/api/login", async (req, res) => {
   console.log(req.body);
   let role = email.split(".")[2];
   console.log(role);
-  
+
   try {
     const logScanParams = {
       TableName: role === "doctor" ? DOC_DB : ADM_DB,
       FilterExpression: "#Att = :Val",
       ExpressionAttributeNames: { "#Att": "email" },
-      ExpressionAttributeValues: { ":Val": {S: email} }
-      
+      ExpressionAttributeValues: { ":Val": email },
     };
     const scanRes = await docClient.send(new ScanCommand(logScanParams));
     if (!scanRes.Items || scanRes.Items.length === 0) {
-      return res.status(404).json({ error: "Utente non trovato" });
+      return res.status(404).json({ message: "Utente non trovato" });
     }
 
     // Se esiste, prendo il primo elemento
-    const user = {...scanRes.Items[0], role: role};
+    const user = { ...scanRes.Items[0], role: role };
 
     // Verifico che la password sia la medesima
     if (user.password !== password) {
-      return res.status(400).json({ error: "Password errata" });
+      return res.status(400).json({ message: "Password errata" });
     }
     // Restituisco stato di corretto accesso e i dati utente
-    return res.status(200).json({ message: "Login effettuato correttamente", user, });
+    return res
+      .status(200)
+      .json({ message: "Login effettuato correttamente", user });
   } catch (error) {
     console.error("Errore nel login: ", error);
     return res.status(500).json({
@@ -203,7 +221,6 @@ async function getApplicationRequests() {
     } while (lastEvaluatedKey);
 
     return items;
-
   } catch (error) {
     console.error("Errore durante la scansione di DynamoDB:", error);
     throw error;
@@ -228,7 +245,7 @@ app.post("/api/application/:id/reject", async (req, res) => {
       TableName: APP_DB,
       FilterExpression: "#Att = :Val",
       ExpressionAttributeNames: { "#Att": "TaxCode" },
-      ExpressionAttributeValues: { ":Val": {S: taxCode} }
+      ExpressionAttributeValues: { ":Val": taxCode },
     };
     const scanRes = await docClient.send(new ScanCommand(appScanParams));
     if (!scanRes.Items || scanRes.Items.length === 0) {
@@ -239,7 +256,7 @@ app.post("/api/application/:id/reject", async (req, res) => {
 
     const refuse = {
       TableName: APP_DB,
-      Key: {TaxCode: application.TaxCode},
+      Key: { TaxCode: application.TaxCode },
       ReturnValues: "ALL_OLD",
     };
     const delRes = await docClient.send(new DeleteCommand(refuse));
@@ -247,16 +264,17 @@ app.post("/api/application/:id/reject", async (req, res) => {
       return res.status(404).json({ error: "Candidatura non trovata." });
     }
 
-    return res.status(200).json({message: "Candidatura rifiutata con successo."});
+    return res
+      .status(200)
+      .json({ message: "Candidatura rifiutata con successo." });
   } catch (error) {
     console.error("Errore nel rifiuto candidatura: ", error);
-    return res.status(500).json({message: "Errore interno."});
+    return res.status(500).json({ message: "Errore interno." });
   }
 });
 
 // Accettazione candidatura dottore
 app.post("/api/application/:id/accept", async (req, res) => {
-
   try {
     const taxCode = req.params.id;
 
@@ -264,18 +282,35 @@ app.post("/api/application/:id/accept", async (req, res) => {
       TableName: APP_DB,
       FilterExpression: "#Att = :Val",
       ExpressionAttributeNames: { "#Att": "TaxCode" },
-      ExpressionAttributeValues: { ":Val": {S: taxCode} }
+      ExpressionAttributeValues: { ":Val": taxCode },
     };
     const scanRes = await docClient.send(new ScanCommand(appScanParams));
     if (!scanRes.Items || scanRes.Items.length === 0) {
       return res.status(404).json({ error: "Candidatura non trovata." });
     }
 
+    const { name, surname } = scanRes.Items[0];
+    console.log(name, surname);
+    const userPrefix = name.toLowerCase()[0] + "." + surname.toLowerCase();
+
+    const params = {
+      TableName: "AppliedDoctors",
+      KeyConditionExpression: "Doctor_Prefix = :prefix",
+      ExpressionAttributeValues: {
+        ":prefix": userPrefix,
+      },
+      Select: "COUNT",
+    };
+
+    const result = await docClient.send(new QueryCommand(params));
+    const userID = result.Count + 1;
+
+    // rimuovi la richiesta e aggiungi l'utente nella tabella dottori
     const application = scanRes.Items[0];
 
     const delParams = {
       TableName: APP_DB,
-      Key: {TaxCode: application.TaxCode},
+      Key: { TaxCode: application.TaxCode },
       ReturnValues: "ALL_OLD",
     };
     const delRes = await docClient.send(new DeleteCommand(delParams));
@@ -286,25 +321,25 @@ app.post("/api/application/:id/accept", async (req, res) => {
     const newDoc = {
       TableName: DOC_DB,
       Item: {
-        ID: application.TaxCode,
+        Doctor_Prefix: userPrefix,
+        Doctor_ID: userID,
         taxCode: application.TaxCode,
+        email: userPrefix + userID + "@hm.doctor.it",
         name: application.name,
         surname: application.surname,
         telegramUsername: application.telegramUsername,
-        password: application.password
-      }
+        password: application.password,
+      },
     };
 
     await docClient.send(new PutCommand(newDoc));
 
-    return res.status(200).json({message: "Nuovo dottore accettato!", });
-
+    return res.status(200).json({ message: "Nuovo dottore accettato!" });
   } catch (error) {
     console.error("Errore nell'accettazione candidatura: ", error);
-    return res.status(500).json({message: "Errore interno."});
+    return res.status(500).json({ message: "Errore interno." });
   }
 });
-
 
 async function getBeds() {
   let items = [];
@@ -323,7 +358,6 @@ async function getBeds() {
     } while (lastEvaluatedKey);
 
     return items;
-
   } catch (error) {
     console.error("Errore durante la scansione di DynamoDB:", error);
     throw error;
@@ -345,12 +379,12 @@ async function getRicoveries() {
       TableName: REC_DB,
       FilterExpression: "#Att = :Val",
       ExpressionAttributeNames: { "#Att": "end_timestamp" },
-      ExpressionAttributeValues: { ":Val": {S: "-1"} }
+      ExpressionAttributeValues: { ":Val": "-1" },
     };
 
     const scanRes = await docClient.send(new ScanCommand(recScanParams));
 
-    const patientCodes = scanRes.Items.map(item => item.patientId);
+    const patientCodes = scanRes.Items.map((item) => item.patientId);
 
     if (!patientCodes.length) {
       return [];
@@ -361,18 +395,19 @@ async function getRicoveries() {
     const patBatchGetParams = {
       RequestItems: {
         PatientData: {
-          Keys: uniquePatientCodes.map(taxCode => ({ taxCode }))
-        }
-      }
+          Keys: uniquePatientCodes.map((taxCode) => ({ taxCode })),
+        },
+      },
     };
 
-    const batchGetRes = await docClient.send(new BatchGetCommand(patBatchGetParams));
+    const batchGetRes = await docClient.send(
+      new BatchGetCommand(patBatchGetParams)
+    );
 
     return batchGetRes.Responses[PAT_DB] || [];
-
   } catch (error) {
-    console.error('Errore durante il recupero dei pazienti ricoverati:', error);
-    throw error; 
+    console.error("Errore durante il recupero dei pazienti ricoverati:", error);
+    throw error;
   }
 }
 
@@ -381,7 +416,7 @@ app.post("/api/recoveries", async (req, res) => {
     const requests = await getRicoveries();
     res.status(200).json(requests);
   } catch (error) {
-    res.status(500).send("Errore durante il recupero dei ricoveri."); 
+    res.status(500).send("Errore durante il recupero dei ricoveri.");
   }
 });
 

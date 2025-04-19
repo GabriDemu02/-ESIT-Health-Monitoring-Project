@@ -13,7 +13,7 @@ import io from "socket.io-client";
 const socket = io(process.env.REACT_APP_CLIENT_URL);
 
 function AdminManagementDashboard({ doctors }) {
-  const [applicationRequests, setApplicationRequests] = useState({});
+  const [applicationRequests, setApplicationRequests] = useState([]);
   const [availableBedrooms, setAvailableBedrooms] = useState([]);
 
   const [name, setName] = useState("");
@@ -93,7 +93,6 @@ function AdminManagementDashboard({ doctors }) {
 
   const handleApplicationReception = (add) => {
     axios
-      .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
       .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
       .then((_) => {
         setApplicationRequests((prev) =>

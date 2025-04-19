@@ -56,8 +56,8 @@ function Login() {
         .post(
           `${process.env.REACT_APP_SERVER_API_URL}/login`,
           {
-            emailTrim,
-            passwordTrim,
+            email: emailTrim,
+            password: passwordTrim,
           },
           { headers: { "Content-Type": "application/json" } }
         )
@@ -68,8 +68,7 @@ function Login() {
           navigate(user.role === "admin" ? "/admin" : "/");
         })
         .catch((error) => {
-          globalError.current.innerText =
-            error.response?.data?.message || "Errore di connessione";
+          globalError.current.innerText = error.response.data.message;
         });
     }
   };

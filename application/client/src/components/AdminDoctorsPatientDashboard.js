@@ -179,7 +179,7 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
                             .post(
                               `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.id}/release`
                             )
-                            .then((_) => {
+                            .then((data) => {
                               const { [patient.id]: _, ...filteredPatients } =
                                 patients;
                               setPatients(filteredPatients);

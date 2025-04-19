@@ -49,10 +49,41 @@ void NTPConnect(void) {
   Serial.print(asctime(&timeinfo));
 }
 
+#define buzzer D7
+
 void callback(String& topic, String& payload) {
   // todo: attivare e disattivare il buzzer
   // tone(buzzer, 4000, 200);
-  Serial.println("BEEEP");
+  //Serial.println("BEEEP");
+
+  StaticJsonDocument<128> doc;
+
+  // Parse the JSON
+  DeserializationError error = deserializeJson(doc, payload);
+  if (error) {
+    Serial.print("JSON parse failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // Read the 'alarm' field from the JSON (as a boolean).
+  // If alarm is missing or invalid, it defaults to false.
+  bool message = doc["alarm"];
+
+  Serial.print("Contenuto: ");
+  Serial.println(message);
+
+  // Se il messaggio arriva sul topic del buzzer
+  if (String(topic).equals(MQTT_SUB_TOPIC)) {
+    if (message) {
+      tone(buzzer, 4000, 200); // Accendo il buzzer
+      Serial.println("Buzzer ATTIVATO!");
+    } else {
+      Serial.println("Buzzer SPENTO!");
+      noTone(buzzer);
+    }
+  }
+
 }
 
 void connectToMqtt(bool nonBlocking = false) {
@@ -103,6 +134,7 @@ void sendData(int heartRate, int bloodPressure) {
   JsonObject state = root.createNestedObject("state");
   JsonObject state_reported = state.createNestedObject("reported");
 
+  state_reported["id"] = THINGNAME;
   state_reported["heart-rate"] = heartRate;
   state_reported["blood-pressure"] = bloodPressure;
   Serial.printf("Sending [%s]: ", MQTT_PUB_TOPIC);
@@ -124,7 +156,7 @@ void sendData(int heartRate, int bloodPressure) {
 #define bloodPressureEditModeButton D2
 #define bloodPressureEditModeLed D1
 #define editModePotentiometer A0
-#define buzzer D7
+
 
 #define HEART_RATE_MIN_RANGE 0
 #define HEART_RATE_MAX_RANGE 250
