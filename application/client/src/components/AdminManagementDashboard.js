@@ -11,7 +11,6 @@ import axios from "axios";
 import io from "socket.io-client";
 
 const socket = io(process.env.REACT_APP_CLIENT_URL);
-const socket = io(process.env.REACT_APP_CLIENT_URL);
 
 function AdminManagementDashboard({ doctors }) {
   const [applicationRequests, setApplicationRequests] = useState({});
@@ -116,7 +115,7 @@ function AdminManagementDashboard({ doctors }) {
 
     axios
       .get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
+      //.get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
       .then((res) => {
         setAvailableBedrooms(res.data);
       })
