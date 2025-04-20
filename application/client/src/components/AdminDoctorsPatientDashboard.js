@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBed,
@@ -8,10 +8,36 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import axios from "axios";
 
-function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
+function AdminDoctorsPatientDashboard() {
   const [searchDoctor, setSearchDoctor] = useState("");
   const [searchPatient, setSearchPatient] = useState("");
   const [doctorFilter, setDoctorFilter] = useState("");
+  const [doctors, setDoctors] = useState([]);
+  const [patients, setPatients] = useState([]);
+
+  useEffect(() => {
+    axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/doctors`)
+      .then((res) => {
+        setDoctors(res.data);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+  }, []);
+
+  useEffect(() => {
+    axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/patients`)
+      .then((res) => {
+        setPatients(res.data);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+  }, []);
+  
+  
 
   return (
     <div>
@@ -63,8 +89,8 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
             <tbody>
               {doctors.map((doctor) => {
                 return (
-                  <tr key={doctor.id}>
-                    <th>{doctor.id}</th>
+                  <tr key={`${doctor.Doctor_Prefix}${doctor.Doctor_ID}`}>
+                    <th>{`${doctor.Doctor_Prefix}${doctor.Doctor_ID}`}</th>
                     <th className="bold">
                       {doctor.name} {doctor.surname}
                     </th>
@@ -151,13 +177,13 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
             <tbody>
               {patients.map((patient) => {
                 return (
-                  <tr key={patient.id}>
-                    <th>{patient.id}</th>
+                  <tr key={patient.TaxCode}>
+                    <th>{patient.TaxCode}</th>
                     <th className="bold">
                       {patient.name} {patient.surname}
                     </th>
-                    <th>{patient.taxCode}</th>
-                    <th>{patient.bedroom}</th>
+                    <th>{patient.TaxCode}</th>
+                    <th>{patient.bed}</th>
                     <th>{patient.deviceStatus}</th>
                     <th className="bold">
                       <select
@@ -177,7 +203,7 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
                         onClick={(e) => {
                           axios
                             .post(
-                              `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.id}/release`
+                              `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.TaxCode}/release`
                             )
                             .then((data) => {
                               const { [patient.id]: _, ...filteredPatients } =

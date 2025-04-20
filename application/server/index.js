@@ -16,6 +16,7 @@ const {
   QueryCommand,
   ScanCommand,
   DeleteCommand,
+  UpdateCommand,
 } = require("@aws-sdk/lib-dynamodb");
 
 const dbclient = new DynamoDBClient({
@@ -29,7 +30,6 @@ const docClient = DynamoDBDocumentClient.from(dbclient);
 
 const DOC_DB = "AppliedDoctors";
 const APP_DB = "ApplicationRequests";
-const PAT_DB = "PatientData";
 const BED_DB = "BedroomCatalog";
 const REC_DB = "RecoveryHistory";
 const ADM_DB = "Admins";
@@ -110,6 +110,9 @@ server.on("message", (topic, payload) => {
   // } else sendAllarm(device, false);
 });
 
+// ****** REGISTRAZIONE ****** //
+/////////////////////////////////
+
 app.post("/api/signup", async (req, res) => {
   console.log("Entered signup!");
   // controlla della api /signup
@@ -155,7 +158,7 @@ app.post("/api/signup", async (req, res) => {
     };
     await docClient.send(new PutCommand(newApp));
 
-    res.json({ message: `L'tente "${taxCode}" candidato con successo!` }); // registrazione conclusa senza errori
+    res.json({ message: `L'utente "${taxCode}" candidato con successo!` }); // registrazione conclusa senza errori
   } catch (error) {
     console.error(
       `Errore nella candidatura dell'utente "${taxCode}".\nCausa: `,
@@ -166,6 +169,9 @@ app.post("/api/signup", async (req, res) => {
       .json({ message: "Errore interno nella candidatura!" });
   }
 });
+
+// ****** ACCESSO ****** //
+///////////////////////////
 
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body; // dati ricevuti dal client
@@ -204,6 +210,102 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+// ****** ADMIN DASHBOARD ****** //
+///////////////////////////////////
+
+app.get("/api/doctors", async (req, res) =>{
+  try {
+    const scanRes = await docClient.send(new ScanCommand({TableName: DOC_DB}));
+    res.json(scanRes.Items);
+  } catch(error) {
+    console.error("Errore nello scan del DB: ", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/patients", async (req, res) =>{
+  try {
+    const params = {
+      TableName: REC_DB,
+      FilterExpression: "end_timestamp = :open",
+      ExpressionAttributeValues: { ":open": -1 },
+    };
+
+    const scanRes = await docClient.send(new ScanCommand(params));
+    res.json(scanRes.Items);
+  } catch (error) {
+    console.error("Errore nello scan del DB: ", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/patient/:id/release", async (req, res) => {
+  try {
+    const taxCode = req.params.id;
+
+    const queryParams = {
+      TableName: REC_DB,
+      KeyConditionExpression: "TaxCode = :tax",
+      ExpressionAttributeValues: { ":tax": taxCode },
+      ScanIndexForward: false, // → decrescente
+      Limit: 1,
+    };
+    const { Items = [] } = await docClient.send(new QueryCommand(queryParams));
+    const lastRec = Items[0];
+    if (!lastRec || lastRec.end_timestamp !== -1) {
+      return res.status(409).json({
+        error: `Nessun ricovero aperto per il paziente "${taxCode}".`,
+      });
+    }
+
+    const updateParamsBed = {
+      TableName: BED_DB,
+      Key: {
+        ID_Bed: lastRec.bed,
+      },
+      UpdateExpression: "SET ID_Patient = :open",
+      ExpressionAttributeValues: {
+        ":open": "-1",
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const updateBed = await docClient.send(new UpdateCommand(updateParamsBed));
+
+    const now = Date.now();  
+    const updateParams = {
+      TableName: REC_DB,
+      Key: {
+        TaxCode: taxCode,
+        start_timestamp: lastRec.start_timestamp,
+      },
+      UpdateExpression: "SET end_timestamp = :ts",
+      ConditionExpression: "end_timestamp = :open",
+      ExpressionAttributeValues: {
+        ":ts": now,
+        ":open": -1,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const update = await docClient.send(new UpdateCommand(updateParams)); 
+
+    return res.json({
+      message: `Paziente "${taxCode}" dimesso con successo.`,
+      end_timestamp: update.end_timestamp,
+    });
+  } catch (error) {
+    console.error("Errore nello scan del DB: ", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ****** ADMIN MANAGEMENT ****** //
+////////////////////////////////////
+
+// ****** CANDIDATURE ****** //
+///////////////////////////////
+
 async function getApplicationRequests() {
   let items = [];
   let lastEvaluatedKey = undefined;
@@ -236,7 +338,6 @@ app.get("/api/applications", async (req, res) => {
   }
 });
 
-// Rifiuto candidatura dottore
 app.post("/api/application/:id/reject", async (req, res) => {
   try {
     const taxCode = req.params.id;
@@ -273,7 +374,6 @@ app.post("/api/application/:id/reject", async (req, res) => {
   }
 });
 
-// Accettazione candidatura dottore
 app.post("/api/application/:id/accept", async (req, res) => {
   try {
     const taxCode = req.params.id;
@@ -341,37 +441,94 @@ app.post("/api/application/:id/accept", async (req, res) => {
   }
 });
 
-async function getBeds() {
-  let items = [];
-  let lastEvaluatedKey = undefined;
-  try {
-    do {
-      const bedScanParams = {
-        TableName: BED_DB,
-        ExclusiveStartKey: lastEvaluatedKey,
-      };
-      const data = await docClient.send(new ScanCommand(bedScanParams));
-      if (data.Items) {
-        items = items.concat(data.Items);
-      }
-      lastEvaluatedKey = data.LastEvaluatedKey;
-    } while (lastEvaluatedKey);
+// ****** AGGIUNTA PAZIENTE ****** //
+/////////////////////////////////////
 
-    return items;
-  } catch (error) {
-    console.error("Errore durante la scansione di DynamoDB:", error);
-    throw error;
-  }
-}
-
-app.post("/api/bedrooms", async (req, res) => {
+app.post("/api/addPatient", async (req, res) => {
   try {
-    const requests = await getBeds();
-    res.status(200).json(requests);
-  } catch (error) {
-    res.status(500).send("Errore durante il recupero dei letti.");
+    console.log(req.body);
+    const { name, surname, taxCode, bed, doctor } = req.body; // dati ricevuti dal client
+
+    // PRENDO L'ULTIMO RICOVERO APERTO DEL PAZIENTE INDICATO (SE ESISTE)
+    const queryParams = {
+      TableName: REC_DB,
+      KeyConditionExpression: "TaxCode = :tax",
+      ExpressionAttributeValues: { ":tax": taxCode },
+      ScanIndexForward: false, 
+      Limit: 1,
+    };
+    const { Items = [] } = await docClient.send(new QueryCommand(queryParams));
+    const lastRec = Items[0];
+    if (lastRec && lastRec.end_timestamp === -1) {
+      return res.status(409).json({
+        error: `Il paziente "${taxCode}" risulta già ricoverato.`,
+      });
+    }
+    
+    // SE NON E' ATTUALMENTE RICOVERATO
+
+    // AGGIORNO IL LETTO SELEZIONATO COME ASSOCIATO AL PAZIENTE
+    const updateParams = {
+      TableName: BED_DB,
+      Key: {
+        ID_Bed: bed,
+      },
+      UpdateExpression: "SET ID_Patient = :tc",
+      ConditionExpression: "attribute_not_exists(ID_Patient) OR ID_Patient = :open",
+      ExpressionAttributeValues: {
+        ":tc": taxCode,
+        ":open": "-1",
+      },
+      ReturnValues: "ALL_NEW",
+    };
+    const update = await docClient.send(new UpdateCommand(updateParams)); 
+
+    // INSERISCO IL NUOVO RICOVERO DEL PAZIENTE
+    const startTs = Date.now().toString();          
+    const newPat = {
+      TableName: REC_DB,
+      Item: {
+        TaxCode: taxCode,
+        start_timestamp: startTs,
+        end_timestamp: -1,               
+        name: name,
+        surname: surname,
+        bed: bed,
+        doctor: doctor,
+      },
+      // Evita inserimenti duplicati con PK+SK identici
+      ConditionExpression: "attribute_not_exists(TaxCode) AND attribute_not_exists(start_timestamp)",
+    };
+    await docClient.send(new PutCommand(newPat));
+
+    res.json({ message: `Ricovero del paziente "${taxCode}" registrato con successo!` }); // registrazione conclusa senza errori
+  } catch(error) {
+    console.error("Errore nell'aggiunta del paziente al DB': ", error);
+    res.status(500).json({ error: error.message });
   }
 });
+
+// ****** CATALOGO LETTI ****** //
+//////////////////////////////////
+
+app.get("/api/bedrooms", async (req, res) => {
+  try {
+    const params = {
+      TableName: BED_DB,
+      FilterExpression: "ID_Patient = :free",
+      ExpressionAttributeValues: { ":free": "-1" },
+    };
+
+    const { Items = [] } = await docClient.send(new ScanCommand(params));
+    res.json(Items);
+  } catch (error) {
+    console.error("Errore nello scan del DB:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ****** RICOVERI ****** //
+////////////////////////////
 
 async function getRicoveries() {
   try {
@@ -404,7 +561,7 @@ async function getRicoveries() {
       new BatchGetCommand(patBatchGetParams)
     );
 
-    return batchGetRes.Responses[PAT_DB] || [];
+    return batchGetRes.Responses[REC_DB] || [];
   } catch (error) {
     console.error("Errore durante il recupero dei pazienti ricoverati:", error);
     throw error;
@@ -419,6 +576,8 @@ app.post("/api/recoveries", async (req, res) => {
     res.status(500).send("Errore durante il recupero dei ricoveri.");
   }
 });
+
+
 
 app.listen(process.env.SERVER_PORT, () => {
   console.log("Server running on port 8000");

@@ -12,9 +12,10 @@ import io from "socket.io-client";
 
 const socket = io(process.env.REACT_APP_CLIENT_URL);
 
-function AdminManagementDashboard({ doctors }) {
+function AdminManagementDashboard({onSuccess}) {
   const [applicationRequests, setApplicationRequests] = useState([]);
   const [availableBedrooms, setAvailableBedrooms] = useState([]);
+  const [availableDoctors, setAvailableDoctors] = useState([]);
 
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
@@ -76,7 +77,48 @@ function AdminManagementDashboard({ doctors }) {
           ? "Inserire un codice fiscale"
           : "Codice fiscale inserito non valido";
     }
+  
+    if (validRequest) {
+      axios
+        .post(
+          `${process.env.REACT_APP_SERVER_API_URL}/addPatient`,
+          {
+            name: nameTrim,
+            surname: surnameTrim,
+            taxCode: taxCodeTrim,
+            bed: bedroom,
+            doctor: doctor
+          },
+          { headers: { "Content-Type": "application/json" } }
+        )
+        .then(() => {
+          onSuccess(true);
+        })
+        .catch((error) => console.log(error));
+    }
   };
+
+  useEffect(() => {
+    axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/doctors`)
+      .then((res) => {
+        setAvailableDoctors(res.data);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+  }, []);
+
+  useEffect(() => {
+    axios
+      .get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
+      .then((res) => {
+        setAvailableBedrooms(res.data);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+  }, []);
 
   const handleApplicationRejection = (remove) => {
     axios
@@ -112,22 +154,14 @@ function AdminManagementDashboard({ doctors }) {
         console.log(error);
       });
 
-    axios
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
-      //.get(`${process.env.REACT_APP_SERVER_API_URL}/bedrooms`)
-      .then((res) => {
-        setAvailableBedrooms(res.data);
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-
     socket.on("newApplicationRequest", (newApplicationRequest) => {
       setApplicationRequests((prev) => [...prev, newApplicationRequest]);
     });
 
     return () => socket.off("newApplicationRequest");
   }, []);
+
+  
 
   return (
     <div className="admin-management-layout">
@@ -291,11 +325,12 @@ function AdminManagementDashboard({ doctors }) {
                   onChange={(e) => setDoctor(e.target.value)}
                 >
                   <option value="">---</option>
-                  {doctors.map((availableDoctor) => {
-                    <option key={availableDoctor.id} value={availableDoctor.id}>
-                      {availableDoctor.id}
-                    </option>;
-                  })}
+                  {availableDoctors.map((availableDoctor) => (
+                    <option key={availableDoctor.Doctor_Prefix+availableDoctor.Doctor_ID} 
+                    value={availableDoctor.Doctor_Prefix+availableDoctor.Doctor_ID}>
+                      {availableDoctor.Doctor_Prefix+availableDoctor.Doctor_ID}
+                    </option>
+                  ))}
                 </select>
                 <div className="form-input-error"></div>
               </div>
@@ -310,11 +345,11 @@ function AdminManagementDashboard({ doctors }) {
                   onChange={(e) => setBedroom(e.target.value)}
                 >
                   <option value="">---</option>
-                  {availableBedrooms.map((bedroom) => {
-                    <option key={bedroom} value={bedroom}>
-                      {bedroom}
-                    </option>;
-                  })}
+                  {availableBedrooms.map((availableBedroom) => (
+                    <option key={availableBedroom.ID_Bed} value={availableBedroom.ID_Bed}>
+                      {availableBedroom.ID_Bed}
+                    </option>
+                  ))}
                 </select>
                 <div className="form-input-error"></div>
               </div>
