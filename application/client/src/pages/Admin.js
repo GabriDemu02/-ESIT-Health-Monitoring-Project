@@ -32,7 +32,12 @@ function Admin() {
       id: 1,
       name: "Gestione ospedale",
       icon: faFileLines,
-      component: <AdminManagementDashboard doctors={doctors} />,
+      component: (
+        <AdminManagementDashboard
+          availableDoctors={doctors}
+          setPatients={setPatients}
+        />
+      ),
     },
   ];
 
@@ -53,7 +58,7 @@ function Admin() {
       <Navbar
         section="Controllo"
         icon={adminProfileIcon}
-        userName={user.name}
+        userName={user.name + " " + user.surname}
         userEmail={user.email}
       >
         <ul>

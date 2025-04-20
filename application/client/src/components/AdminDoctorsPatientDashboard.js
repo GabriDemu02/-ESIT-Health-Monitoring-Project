@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBed,
@@ -8,36 +8,10 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import axios from "axios";
 
-function AdminDoctorsPatientDashboard() {
+function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
   const [searchDoctor, setSearchDoctor] = useState("");
   const [searchPatient, setSearchPatient] = useState("");
   const [doctorFilter, setDoctorFilter] = useState("");
-  const [doctors, setDoctors] = useState([]);
-  const [patients, setPatients] = useState([]);
-
-  useEffect(() => {
-    axios
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/doctors`)
-      .then((res) => {
-        setDoctors(res.data);
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-  }, []);
-
-  useEffect(() => {
-    axios
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/patients`)
-      .then((res) => {
-        setPatients(res.data);
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-  }, []);
-  
-  
 
   return (
     <div>
@@ -152,8 +126,11 @@ function AdminDoctorsPatientDashboard() {
                 <option value="">---</option>
                 {doctors.map((doctor) => {
                   return (
-                    <option key={doctor.id} value={doctor.id}>
-                      {doctor.id}
+                    <option
+                      key={doctor.Doctor_Prefix + doctor.Doctor_ID}
+                      value={doctor.Doctor_Prefix + doctor.Doctor_ID}
+                    >
+                      {doctor.Doctor_Prefix + doctor.Doctor_ID}
                     </option>
                   );
                 })}
@@ -165,9 +142,8 @@ function AdminDoctorsPatientDashboard() {
           <table>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Nome e Cognome</th>
                 <th>Codice fiscale</th>
+                <th>Nome e Cognome</th>
                 <th>Stanza</th>
                 <th>Dispositivo</th>
                 <th>Medico</th>
@@ -182,7 +158,6 @@ function AdminDoctorsPatientDashboard() {
                     <th className="bold">
                       {patient.name} {patient.surname}
                     </th>
-                    <th>{patient.TaxCode}</th>
                     <th>{patient.bed}</th>
                     <th>{patient.deviceStatus}</th>
                     <th className="bold">
@@ -191,9 +166,14 @@ function AdminDoctorsPatientDashboard() {
                         className="admin-dashboard-doctors-patients-patient-select"
                       >
                         {doctors.map((doctor) => {
-                          <option key={doctor.id} value={doctor.id}>
-                            {doctor.id}
-                          </option>;
+                          return (
+                            <option
+                              key={doctor.Doctor_Prefix + doctor.Doctor_ID}
+                              value={doctor.Doctor_Prefix + doctor.Doctor_ID}
+                            >
+                              {doctor.Doctor_Prefix + doctor.Doctor_ID}
+                            </option>
+                          );
                         })}
                       </select>
                     </th>

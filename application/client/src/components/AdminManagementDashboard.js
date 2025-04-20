@@ -12,10 +12,9 @@ import io from "socket.io-client";
 
 const socket = io(process.env.REACT_APP_CLIENT_URL);
 
-function AdminManagementDashboard({onSuccess}) {
+function AdminManagementDashboard({ availableDoctors, setPatients }) {
   const [applicationRequests, setApplicationRequests] = useState([]);
   const [availableBedrooms, setAvailableBedrooms] = useState([]);
-  const [availableDoctors, setAvailableDoctors] = useState([]);
 
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
@@ -45,6 +44,18 @@ function AdminManagementDashboard({onSuccess}) {
     setTaxCode(e.target.value);
     taxCodeInput.current.children[1].style.border = "";
     taxCodeInput.current.children[2].innerText = "";
+  };
+
+  const handleDoctor = (e) => {
+    setDoctor(e.target.value);
+    doctorInput.current.children[1].style.border = "";
+    doctorInput.current.children[2].innerText = "";
+  };
+
+  const handleBedroom = (e) => {
+    setBedroom(e.target.value);
+    bedroomInput.current.children[1].style.border = "";
+    bedroomInput.current.children[2].innerText = "";
   };
 
   const handleSubmit = (e) => {
@@ -77,37 +88,47 @@ function AdminManagementDashboard({onSuccess}) {
           ? "Inserire un codice fiscale"
           : "Codice fiscale inserito non valido";
     }
-  
+    if (doctor.length === 0) {
+      validRequest = false;
+      doctorInput.current.children[1].style.border = "2px solid red";
+      doctorInput.current.children[2].innerText = "Selezionare un medico";
+    }
+    if (bedroom.length === 0) {
+      validRequest = false;
+      bedroomInput.current.children[1].style.border = "2px solid red";
+      bedroomInput.current.children[2].innerText = "Selezionare una stanza";
+    }
+
     if (validRequest) {
+      let newPatient = {
+        name: nameTrim,
+        surname: surnameTrim,
+        TaxCode: taxCodeTrim,
+        bed: bedroom,
+        doctor: doctor,
+      };
       axios
         .post(
           `${process.env.REACT_APP_SERVER_API_URL}/addPatient`,
-          {
-            name: nameTrim,
-            surname: surnameTrim,
-            taxCode: taxCodeTrim,
-            bed: bedroom,
-            doctor: doctor
-          },
+          newPatient,
           { headers: { "Content-Type": "application/json" } }
         )
-        .then(() => {
-          onSuccess(true);
+        .then((res) => {
+          alert(res.data.message);
+          setPatients((prev) => [...prev, newPatient]);
+          setName("");
+          setSurname("");
+          setTaxCode("");
+          setDoctor("");
+          setBedroom("");
         })
-        .catch((error) => console.log(error));
+        .catch((error) => {
+          taxCodeInput.current.children[1].style.border = "2px solid red";
+          taxCodeInput.current.children[2].innerText =
+            error.response.data.message;
+        });
     }
   };
-
-  useEffect(() => {
-    axios
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/doctors`)
-      .then((res) => {
-        setAvailableDoctors(res.data);
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-  }, []);
 
   useEffect(() => {
     axios
@@ -161,8 +182,6 @@ function AdminManagementDashboard({onSuccess}) {
     return () => socket.off("newApplicationRequest");
   }, []);
 
-  
-
   return (
     <div className="admin-management-layout">
       <div className="admin-management-section">
@@ -191,7 +210,6 @@ function AdminManagementDashboard({onSuccess}) {
           }}
         >
           {applicationRequests.map((application, i) => {
-            // applicationRequests deve essere un array di object [{name, surname, taxcode, telegram}]
             return (
               <div key={i} className="admin-management-application-layout">
                 <div>
@@ -317,18 +335,24 @@ function AdminManagementDashboard({onSuccess}) {
               <div
                 ref={doctorInput}
                 className="flex f-col"
-                style={{ width: "50%", marginRight: "8px" }}
+                style={{ width: "50%", marginRight: "20px" }}
               >
                 <label>Medico curante:</label>
-                <select
-                  value={doctor}
-                  onChange={(e) => setDoctor(e.target.value)}
-                >
+                <select value={doctor} onChange={handleDoctor}>
                   <option value="">---</option>
                   {availableDoctors.map((availableDoctor) => (
-                    <option key={availableDoctor.Doctor_Prefix+availableDoctor.Doctor_ID} 
-                    value={availableDoctor.Doctor_Prefix+availableDoctor.Doctor_ID}>
-                      {availableDoctor.Doctor_Prefix+availableDoctor.Doctor_ID}
+                    <option
+                      key={
+                        availableDoctor.Doctor_Prefix +
+                        availableDoctor.Doctor_ID
+                      }
+                      value={
+                        availableDoctor.Doctor_Prefix +
+                        availableDoctor.Doctor_ID
+                      }
+                    >
+                      {availableDoctor.Doctor_Prefix +
+                        availableDoctor.Doctor_ID}
                     </option>
                   ))}
                 </select>
@@ -337,16 +361,16 @@ function AdminManagementDashboard({onSuccess}) {
               <div
                 ref={bedroomInput}
                 className="flex f-col"
-                style={{ width: "50%", marginLeft: "8px" }}
+                style={{ width: "50%", marginLeft: "20px" }}
               >
                 <label>Stanza:</label>
-                <select
-                  value={bedroom}
-                  onChange={(e) => setBedroom(e.target.value)}
-                >
+                <select value={bedroom} onChange={handleBedroom}>
                   <option value="">---</option>
                   {availableBedrooms.map((availableBedroom) => (
-                    <option key={availableBedroom.ID_Bed} value={availableBedroom.ID_Bed}>
+                    <option
+                      key={availableBedroom.ID_Bed}
+                      value={availableBedroom.ID_Bed}
+                    >
                       {availableBedroom.ID_Bed}
                     </option>
                   ))}

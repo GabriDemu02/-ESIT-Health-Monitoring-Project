@@ -27,40 +27,49 @@ function Doctor() {
 
   useEffect(() => {
     axios
-      .get(`${process.env.REACT_APP_SERVER_API_URL}/doctor/${user.id}/patients`)
+      .get(
+        `${process.env.REACT_APP_SERVER_API_URL}/doctor/${
+          user.Doctor_Prefix + user.Doctor_ID
+        }/patients`
+      )
       .then((res) => setPatients(res.data))
       .catch((error) => console.log(error));
   }, []);
 
   useEffect(() => {
-    axios
-      .get(
-        `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/latest`
-      )
-      .then((res) => setSelectedPatientDeviceLastValues(res.data))
-      .catch((error) => console.log(error));
+    if (selectedPatient) {
+      axios
+        .get(
+          `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/latest`
+        )
+        .then((res) => setSelectedPatientDeviceLastValues(res.data))
+        .catch((error) => console.log(error));
 
-    axios
-      .get(
-        `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/emergencies`
-      )
-      .then((res) => setEmergencies(res.data))
-      .catch((error) => console.log(error));
+      axios
+        .get(
+          `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/emergencies`
+        )
+        .then((res) => setEmergencies(res.data))
+        .catch((error) => console.log(error));
 
-    socket.on(`/device/${patients[selectedPatient].device}/updates`, (data) => {
-      setSelectedPatientDeviceLastValues(data);
-    });
+      socket.on(
+        `/device/${patients[selectedPatient].device}/updates`,
+        (data) => {
+          setSelectedPatientDeviceLastValues(data);
+        }
+      );
 
-    return () =>
-      socket.off(`/device/${patients[selectedPatient].device}/updates`);
-  }, [selectedPatient]);
+      return () =>
+        socket.off(`/device/${patients[selectedPatient].device}/updates`);
+    }
+  }, [patients, selectedPatient]);
 
   return (
     <div className="page-layout">
       <Navbar
         section="Pazienti"
         icon={doctorProfileIcon}
-        userName={user.name}
+        userName={user.name + " " + user.surname}
         userEmail={user.email}
       >
         <div
