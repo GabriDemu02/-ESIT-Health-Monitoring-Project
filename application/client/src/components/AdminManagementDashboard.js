@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 
-const socket = io(process.env.REACT_APP_CLIENT_URL);
+const socket = io(process.env.REACT_APP_SOCKET_URL);
 
 function AdminManagementDashboard({ availableDoctors, setPatients }) {
   const [applicationRequests, setApplicationRequests] = useState([]);

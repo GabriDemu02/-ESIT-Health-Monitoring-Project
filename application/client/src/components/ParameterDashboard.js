@@ -18,7 +18,7 @@ import styled from "styled-components";
 import io from "socket.io-client";
 import axios from "axios";
 
-const socket = io(process.env.REACT_APP_CLIENT_URL);
+const socket = io(process.env.REACT_APP_SOCKET_URL);
 
 function Measurement({ label, value, children }) {
   return (
@@ -60,6 +60,7 @@ function TrendLine({ value, color, size, min, max }) {
       <svg width={width} height={height}>
         {[0.25, 0.5, 0.75].map((y) => (
           <line
+            key={y}
             x1={0}
             x2={width}
             y1={y * height}
@@ -147,6 +148,7 @@ function ParameterDashboard({
   patients,
   selectedPatient,
   parameter,
+  parameterID,
   unit,
   color,
   icon,
@@ -169,9 +171,11 @@ function ParameterDashboard({
   useEffect(() => {
     axios
       .get(
-        `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds`
+        `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds/${parameterID}`
       )
-      .then((res) => setNewThresholds(res.data))
+      .then((res) => {
+        setNewThresholds(res.data);
+      })
       .catch((error) => console.log(error));
 
     axios
@@ -208,7 +212,13 @@ function ParameterDashboard({
             </span>
           </Measurement>
           <Measurement label="Media" value={avg}>
-            <TrendLine value={78} color={color} size={12} min={0} max={250} />
+            <TrendLine
+              value={value}
+              color={color}
+              size={12}
+              min={minThreshold}
+              max={maxThreshold}
+            />
           </Measurement>
         </div>
       </div>
@@ -313,7 +323,7 @@ function ParameterDashboard({
                 onClick={() => {
                   axios
                     .post(
-                      `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds`,
+                      `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds/${parameterID}`,
                       {
                         minThreshold: newThresholds[0],
                         maxThreshold: newThresholds[1],

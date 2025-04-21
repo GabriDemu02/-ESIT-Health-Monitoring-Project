@@ -14,7 +14,7 @@ import { useAuth } from "../AuthContext";
 import io from "socket.io-client";
 import axios from "axios";
 
-const socket = io(process.env.REACT_APP_CLIENT_URL);
+const socket = io(process.env.REACT_APP_SOCKET_URL);
 
 function Doctor() {
   const { user } = useAuth();
@@ -32,7 +32,9 @@ function Doctor() {
           user.Doctor_Prefix + user.Doctor_ID
         }/patients`
       )
-      .then((res) => setPatients(res.data))
+      .then((res) => {
+        setPatients(res.data);
+      })
       .catch((error) => console.log(error));
   }, []);
 
@@ -62,7 +64,7 @@ function Doctor() {
       return () =>
         socket.off(`/device/${patients[selectedPatient].device}/updates`);
     }
-  }, [patients, selectedPatient]);
+  }, [selectedPatient]);
 
   return (
     <div className="page-layout">
@@ -126,11 +128,13 @@ function Doctor() {
                     </div>
                     <div className="flex f-row v-center space-btw">
                       <div className="bold" style={{ paddingLeft: "8px" }}>
-                        {patients[patient].name}
+                        {patients[patient].name +
+                          " " +
+                          patients[patient].surname}
                       </div>
                       <div className="flex f-row v-center">
                         <div style={{ width: "42px", textAlign: "right" }}>
-                          {patients[patient].room}
+                          {patients[patient].bed}
                         </div>
                         <div
                           className={`flex v-center font-xsm ${
@@ -177,10 +181,12 @@ function Doctor() {
                 <FontAwesomeIcon icon={faBed} />
               </div>
               <div className="bold font-big" style={{ paddingLeft: "8px" }}>
-                {patients[selectedPatient].name}
+                {patients[selectedPatient].name +
+                  " " +
+                  patients[selectedPatient].surname}
               </div>
             </div>
-            <div>{patients[selectedPatient].room}</div>
+            <div>{patients[selectedPatient].bed}</div>
             <div
               className={`flex v-center font-xsm ${
                 patients[selectedPatient].deviceStatus
@@ -206,25 +212,35 @@ function Doctor() {
               patients={patients}
               selectedPatient={selectedPatient}
               parameter="Battito Cardiaco"
+              parameterID="HeartRate"
               unit="bpm"
               icon={faHeart}
               value={selectedPatientDeviceLastValues.heartRate}
               avg={selectedPatientDeviceLastValues.heartRateAvg}
               color="var(--red-color)"
-              minThreshold={process.env.REACT_APP_HEART_RATE_MIN_THRESHOLD}
-              maxThreshold={process.env.REACT_APP_HEART_RATE_MAX_THRESHOLD}
+              minThreshold={Number(
+                process.env.REACT_APP_HEART_RATE_MIN_THRESHOLD
+              )}
+              maxThreshold={Number(
+                process.env.REACT_APP_HEART_RATE_MAX_THRESHOLD
+              )}
             />
             <ParameterDashboard
               patients={patients}
               selectedPatient={selectedPatient}
               parameter="Pressione Sanguigna"
+              parameterID="BloodPressure"
               unit="mmHg"
               icon={faDroplet}
               value={selectedPatientDeviceLastValues.bloodPressure}
               avg={selectedPatientDeviceLastValues.bloodPressureAvg}
               color="var(--orange-color)"
-              minThreshold={process.env.REACT_APP_BLOOD_PRESSURE_MIN_THRESHOLD}
-              maxThreshold={process.env.REACT_APP_BLOOD_PRESSURE_MAX_THRESHOLD}
+              minThreshold={Number(
+                process.env.REACT_APP_BLOOD_PRESSURE_MIN_THRESHOLD
+              )}
+              maxThreshold={Number(
+                process.env.REACT_APP_BLOOD_PRESSURE_MAX_THRESHOLD
+              )}
             />
           </div>
           <div className="patient-dashboard-allarms-layout">

@@ -5,8 +5,17 @@ require("dotenv").config();
 const http = require("http");
 const socketIo = require("socket.io");
 const app = express();
+
+app.use(express.json());
+app.use(cors());
+
 const socketServer = http.createServer(app);
-const io = socketIo(socketServer);
+const io = socketIo(socketServer, {
+  cors: {
+    origin: process.env.CLIENT_URL,
+    methods: ["GET", "POST"],
+  },
+});
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const {
   DynamoDBDocumentClient,
@@ -17,6 +26,7 @@ const {
   ScanCommand,
   DeleteCommand,
   UpdateCommand,
+  ListTablesCommand,
 } = require("@aws-sdk/lib-dynamodb");
 
 const dbclient = new DynamoDBClient({
@@ -34,9 +44,7 @@ const BED_DB = "BedroomCatalog";
 const REC_DB = "RecoveryHistory";
 const ADM_DB = "Admins";
 const DEV_DB = "DeviceData";
-
-app.use(express.json());
-app.use(cors());
+const PAT_DB = "PatientThresholds";
 
 const server = awsIot.device({
   keyPath: process.env.AWS_CERT_KEY,
@@ -49,6 +57,19 @@ const server = awsIot.device({
 server.on("connect", () => {
   console.log("Connected to AWS IoT");
   server.subscribe(process.env.MQTT_SUB_TOPIC);
+});
+
+socketServer.listen(process.env.SOCKET_SERVER_PORT, () => {
+  console.log(
+    `Socket server running on port ${process.env.SOCKET_SERVER_PORT}`
+  );
+});
+
+io.on("connection", (socket) => {
+  console.log(`Client ${socket.id} connected to socket server`);
+  socket.on("disconnect", () => {
+    console.log(`Client ${socket.id} disconnected to socket server`);
+  });
 });
 
 function sendAllarm(device, state) {
@@ -81,28 +102,27 @@ let avrgHR = new ReadingsAverage(30);
 let avrgBP = new ReadingsAverage(30);
 
 server.on("message", (topic, payload) => {
-  if (topic === process.env.MQTT_SUB_TOPIC) {
-    const data = JSON.parse(payload.toString());
+  // if (topic === process.env.MQTT_SUB_TOPIC) {
+  const data = JSON.parse(payload.toString());
 
-    let heartRate = undefined;
-    if (data && data.state.reported["heart-rate"] !== undefined)
-      heartRate = data.state.reported["heart-rate"];
+  let heartRate = undefined;
+  if (data && data.state.reported["heart-rate"] !== undefined)
+    heartRate = data.state.reported["heart-rate"];
 
-    let bloodPressure = undefined;
-    if (data && data.state.reported["blood-pressure"] !== undefined)
-      bloodPressure = data.state.reported["blood-pressure"];
+  let bloodPressure = undefined;
+  if (data && data.state.reported["blood-pressure"] !== undefined)
+    bloodPressure = data.state.reported["blood-pressure"];
 
-    let device = topic.split("/")[2];
-    sendAllarm(device, true);
+  let device = topic.split("/")[2];
 
-    io.emit(`/${device}/updates`, {
-      device: device,
-      heartRate: heartRate,
-      heartRateAvg: Math.floor(avrgHR.addValue(heartRate)),
-      bloodPressure: bloodPressure,
-      bloodPressureAvg: Math.floor(avrgBP.addValue(bloodPressure)),
-    });
-  }
+  io.emit(`/device/${device}/updates`, {
+    device: device,
+    heartRate: heartRate,
+    heartRateAvg: Math.floor(avrgHR.addValue(heartRate)),
+    bloodPressure: bloodPressure,
+    bloodPressureAvg: Math.floor(avrgBP.addValue(bloodPressure)),
+  });
+  // }
 
   // Gestione del controllo del buzzer del device
   // if (bloodPressure > 120 || heartRate > 120) {
@@ -230,7 +250,7 @@ app.get("/api/patients", async (req, res) => {
     const params = {
       TableName: REC_DB,
       FilterExpression: "end_timestamp = :open",
-      ExpressionAttributeValues: { ":open": "-1" },
+      ExpressionAttributeValues: { ":open": -1 },
     };
 
     const scanRes = await docClient.send(new ScanCommand(params));
@@ -260,6 +280,10 @@ app.post("/api/patient/:id/release", async (req, res) => {
       });
     }
 
+    const deleteResult = await docClient.send(
+      new DeleteCommand({ TableName: PAT_DB, Key: { TaxCode: taxCode } })
+    );
+
     const updateParamsBed = {
       TableName: BED_DB,
       Key: {
@@ -285,7 +309,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
       ConditionExpression: "end_timestamp = :open",
       ExpressionAttributeValues: {
         ":ts": now,
-        ":open": "-1",
+        ":open": -1,
       },
       ReturnValues: "ALL_NEW",
     };
@@ -469,6 +493,20 @@ app.post("/api/addPatient", async (req, res) => {
 
     // SE NON E' ATTUALMENTE RICOVERATO
 
+    // crea threshold paziente
+    await docClient.send(
+      new PutCommand({
+        TableName: PAT_DB,
+        Item: {
+          TaxCode: TaxCode,
+          minThresholdHeartRate: 50,
+          maxThresholdHeartRate: 150,
+          minThresholdBloodPressure: 50,
+          maxThresholdBloodPressure: 150,
+        },
+      })
+    );
+
     // AGGIORNO IL LETTO SELEZIONATO COME ASSOCIATO AL PAZIENTE
     const updateParams = {
       TableName: BED_DB,
@@ -493,7 +531,7 @@ app.post("/api/addPatient", async (req, res) => {
       Item: {
         TaxCode: TaxCode,
         start_timestamp: startTs,
-        end_timestamp: "-1",
+        end_timestamp: -1,
         name: name,
         surname: surname,
         bed: bed,
@@ -542,7 +580,7 @@ async function getRicoveries() {
       TableName: REC_DB,
       FilterExpression: "#Att = :Val",
       ExpressionAttributeNames: { "#Att": "end_timestamp" },
-      ExpressionAttributeValues: { ":Val": "-1" },
+      ExpressionAttributeValues: { ":Val": -1 },
     };
 
     const scanRes = await docClient.send(new ScanCommand(recScanParams));
@@ -589,28 +627,67 @@ app.get("/api/doctor/:id/patients", async (req, res) => {
 
   try {
     const command = new ScanCommand({
-      TableName: "RecoveryHistory",
+      TableName: REC_DB,
       FilterExpression: "doctor = :id AND end_timestamp = :recovered",
       ExpressionAttributeValues: {
         ":id": doctorID,
-        ":recovered": "-1",
+        ":recovered": -1,
       },
     });
 
     const result = await docClient.send(command);
-    const data = result.Items.reduce((acc, item) => {
-      const { TaxCode, ...rest } = item;
-      acc[TaxCode] = rest;
-      return acc;
-    }, {});
+    const data = {};
 
-    console.log(result);
+    for (let patient of result.Items) {
+      const paramsDevice = new GetCommand({
+        TableName: BED_DB,
+        Key: { ID_Bed: patient.bed },
+      });
+
+      const deviceResult = await docClient.send(paramsDevice);
+
+      const { TaxCode, ...rest } = patient;
+      data[TaxCode] = { ...rest, device: deviceResult.Item?.ID_Dev };
+    }
+
     res.status(200).json(data);
   } catch (error) {
     res.status(500).send("Errore durante il recupero dei pazienti.");
   }
 });
 
+// API pazienti
+app.get("/api/patient/:id/thresholds/:param", async (req, res) => {
+  const taxCode = req.params.id;
+  const param = req.params.param;
+
+  if (param !== "HeartRate" && param !== "BloodPressure")
+    return res.status(400).json({
+      message: `Richiesta non valida, "${param}" non e' un parametro valido`,
+    });
+
+  try {
+    const patientParams = new GetCommand({
+      TableName: PAT_DB,
+      Key: { TaxCode: taxCode },
+    });
+    const patient = await docClient.send(patientParams);
+
+    if (!patient.Item || patient.Item.length === 0) {
+      return res.status(404).json({ error: "Paziente non trovato." });
+    }
+
+    const data = [
+      patient.Item[`minThreshold${param}`],
+      patient.Item[`maxThreshold${param}`],
+    ];
+
+    res.status(200).json(data);
+  } catch (error) {
+    res.status(500).send("Errore durante il recupero delle soglie");
+  }
+});
+
 app.listen(process.env.SERVER_PORT, () => {
-  console.log("Server running on port 8000");
+  console.log(`Server running on port ${process.env.SERVER_PORT}`);
 });
