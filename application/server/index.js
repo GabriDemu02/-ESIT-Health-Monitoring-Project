@@ -261,6 +261,10 @@ app.get("/api/patients", async (req, res) => {
   }
 });
 
+app.post("/api/patient/:id/docChange", async (req, res) => {
+
+});
+
 app.post("/api/patient/:id/release", async (req, res) => {
   try {
     const taxCode = req.params.id;

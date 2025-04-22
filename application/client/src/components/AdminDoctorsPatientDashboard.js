@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBed,
@@ -12,6 +12,27 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
   const [searchDoctor, setSearchDoctor] = useState("");
   const [searchPatient, setSearchPatient] = useState("");
   const [doctorFilter, setDoctorFilter] = useState("");
+  const [doctor, setDoctor] = useState("");
+
+  const doctorInput = useRef(null);
+
+  const handleDoctor = (e) => {
+    setDoctor(e.target.value);
+    doctorInput.current.children[1].style.border = "";
+    doctorInput.current.children[2].innerText = "";
+  };
+
+  //useEffect(() => {
+  //  axios
+  //    .get(`${process.env.REACT_APP_SERVER_API_URL}/patient/${id}/docChange`)
+  //    .then((res) => {
+  //      setDoctor(res.data);
+  //    })
+  //    .catch((error) => {
+  //      console.log(error);
+  //    });
+  //}, []);
+
 
   return (
     <div>
@@ -164,6 +185,7 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
                       <select
                         value={patient.doctor}
                         className="admin-dashboard-doctors-patients-patient-select"
+                        onChange={handleDoctor}
                       >
                         {doctors.map((doctor) => {
                           return (
