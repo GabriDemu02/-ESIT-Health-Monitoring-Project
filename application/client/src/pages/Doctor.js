@@ -215,8 +215,8 @@ function Doctor() {
               parameterID="HeartRate"
               unit="bpm"
               icon={faHeart}
-              value={selectedPatientDeviceLastValues.heartRate}
-              avg={selectedPatientDeviceLastValues.heartRateAvg}
+              value={selectedPatientDeviceLastValues.heartRate ?? "---"}
+              avg={selectedPatientDeviceLastValues.heartRateAvg ?? "---"}
               color="var(--red-color)"
               minThreshold={Number(
                 process.env.REACT_APP_HEART_RATE_MIN_THRESHOLD
@@ -232,8 +232,8 @@ function Doctor() {
               parameterID="BloodPressure"
               unit="mmHg"
               icon={faDroplet}
-              value={selectedPatientDeviceLastValues.bloodPressure}
-              avg={selectedPatientDeviceLastValues.bloodPressureAvg}
+              value={selectedPatientDeviceLastValues.bloodPressure ?? "---"}
+              avg={selectedPatientDeviceLastValues.bloodPressureAvg ?? "---"}
               color="var(--orange-color)"
               minThreshold={Number(
                 process.env.REACT_APP_BLOOD_PRESSURE_MIN_THRESHOLD
@@ -245,7 +245,7 @@ function Doctor() {
           </div>
           <div className="patient-dashboard-allarms-layout">
             <div className="bold">Registro Allarmi</div>
-            <table>
+            <table style={{ height: "fit-content" }}>
               <thead>
                 <tr>
                   <th>Data</th>

@@ -177,7 +177,9 @@ function ParameterDashboard({
         setNewThresholds(res.data);
       })
       .catch((error) => console.log(error));
+  }, [selectedPatient]);
 
+  useEffect(() => {
     axios
       .get(
         `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/history/${selectedDate}`

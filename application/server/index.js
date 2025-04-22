@@ -688,6 +688,111 @@ app.get("/api/patient/:id/thresholds/:param", async (req, res) => {
   }
 });
 
+app.post("/api/patient/:id/thresholds/:param", async (req, res) => {
+  const taxCode = req.params.id;
+  const param = req.params.param;
+
+  if (param !== "HeartRate" && param !== "BloodPressure")
+    return res.status(400).json({
+      message: `Richiesta non valida, "${param}" non e' un parametro valido`,
+    });
+
+  try {
+    const patientParams = new GetCommand({
+      TableName: PAT_DB,
+      Key: { TaxCode: taxCode },
+    });
+    const patient = await docClient.send(patientParams);
+
+    if (!patient.Item || patient.Item.length === 0) {
+      return res.status(404).json({ error: "Paziente non trovato." });
+    }
+
+    const updateThresholdsParams = {
+      TableName: PAT_DB,
+      Key: {
+        TaxCode: taxCode,
+      },
+      UpdateExpression: "SET #min = :min, #max = :max",
+      ExpressionAttributeNames: {
+        "#min": `minThreshold${param}`,
+        "#max": `maxThreshold${param}`,
+      },
+      ExpressionAttributeValues: {
+        ":min": req.body.minThreshold,
+        ":max": req.body.maxThreshold,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    await docClient.send(new UpdateCommand(updateThresholdsParams));
+
+    res.status(200).json({ message: "Thresholds aggiornate con successo" });
+  } catch (error) {
+    res.status(500).send("Errore durante l'aggiornamento delle soglie");
+  }
+});
+
+function groupData(data, param, time) {
+  const buckets = {};
+  const factor = time * 60 * 1000;
+
+  for (const item of data) {
+    const ts = item.timestamp;
+    const rounded = Math.floor(ts / factor) * factor;
+
+    if (!buckets[rounded]) {
+      buckets[rounded] = { sum: 0, count: 0 };
+    }
+
+    buckets[rounded].sum += item[param];
+    buckets[rounded].count += 1;
+  }
+
+  const result = Object.entries(buckets).map(([timestamp, { sum, count }]) => ({
+    timestamp: parseInt(timestamp),
+    avg: sum / count,
+  }));
+
+  return result;
+}
+
+app.get(
+  "/api/device/:id/param/:param/history/:selectedDate",
+  async (req, res) => {
+    const device = req.params.id;
+    const param = req.params.param;
+    const date = req.params.selectedDate;
+
+    if (param !== "HeartRate" && param !== "BloodPressure")
+      return res.status(400).json({
+        message: `Richiesta non valida, "${param}" non e' un parametro valido`,
+      });
+
+    const from = new Date(`${date}T00:00:00Z`).getTime();
+    const to = new Date(`${date}T23:59:59.999Z`).getTime();
+
+    try {
+      const params = {
+        TableName: "DeviceData",
+        KeyConditionExpression: "ID = :deviceId AND #ts BETWEEN :from AND :to",
+        ExpressionAttributeNames: {
+          "#ts": "timestamp",
+        },
+        ExpressionAttributeValues: {
+          ":deviceId": device,
+          ":from": from,
+          ":to": to,
+        },
+      };
+
+      const result = await docClient.send(new QueryCommand(params));
+
+      const data = groupData(result.Items, param, date);
+    } catch (error) {}
+  }
+);
+
 app.listen(process.env.SERVER_PORT, () => {
   console.log(`Server running on port ${process.env.SERVER_PORT}`);
 });
