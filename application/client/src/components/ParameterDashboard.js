@@ -182,7 +182,7 @@ function ParameterDashboard({
   useEffect(() => {
     axios
       .get(
-        `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/history/${selectedDate}`
+        `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/param/${parameterID}/history/${selectedDate}`
       )
       .then((res) => setHistory(res.data))
       .catch((error) => console.log(error));

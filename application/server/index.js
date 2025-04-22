@@ -749,10 +749,15 @@ function groupData(data, param, time) {
     buckets[rounded].count += 1;
   }
 
-  const result = Object.entries(buckets).map(([timestamp, { sum, count }]) => ({
-    timestamp: parseInt(timestamp),
-    avg: sum / count,
-  }));
+  const result = Object.entries(buckets).map(([timestamp, { sum, count }]) => {
+    const itemDate = new Date(Number(timestamp));
+    const hours = itemDate.getHours().toString().padStart(2, "0");
+    const minutes = itemDate.getMinutes().toString().padStart(2, "0");
+    return {
+      timestamp: `${hours}:${minutes}`,
+      value: parseInt(sum / count),
+    };
+  });
 
   return result;
 }
@@ -769,18 +774,18 @@ app.get(
         message: `Richiesta non valida, "${param}" non e' un parametro valido`,
       });
 
-    const from = new Date(`${date}T00:00:00Z`).getTime();
-    const to = new Date(`${date}T23:59:59.999Z`).getTime();
+    const from = new Date(`${date}T00:00`).getTime() / 1000;
+    const to = new Date(`${date}T23:59:59`).getTime() / 1000;
 
     try {
       const params = {
-        TableName: "DeviceData",
-        KeyConditionExpression: "ID = :deviceId AND #ts BETWEEN :from AND :to",
+        TableName: DEV_DB,
+        KeyConditionExpression: "ID = :id AND #ts BETWEEN :from AND :to",
         ExpressionAttributeNames: {
           "#ts": "timestamp",
         },
         ExpressionAttributeValues: {
-          ":deviceId": device,
+          ":id": device,
           ":from": from,
           ":to": to,
         },
@@ -788,8 +793,16 @@ app.get(
 
       const result = await docClient.send(new QueryCommand(params));
 
-      const data = groupData(result.Items, param, date);
-    } catch (error) {}
+      const paramAttr = {
+        HeartRate: "heart_rate",
+        BloodPressure: "blood_pressure",
+      };
+      const data = groupData(result.Items, paramAttr[param], 5);
+
+      res.status(200).json(data);
+    } catch (error) {
+      res.status(500).send("Errore durante il recupero dei dati del sensore");
+    }
   }
 );
 
