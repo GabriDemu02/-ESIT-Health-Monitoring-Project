@@ -188,14 +188,16 @@ function ParameterDashboard({
       .catch((error) => console.log(error));
 
     socket.on(
-      `/device/${patients[selectedPatient].device}/history/updates`,
+      `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`,
       (data) => {
         setHistory([...history, data]);
       }
     );
 
     return () =>
-      socket.off(`/device/${patients[selectedPatient].device}/history/updates`);
+      socket.off(
+        `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`
+      );
   }, [selectedPatient, selectedDate]);
 
   return (

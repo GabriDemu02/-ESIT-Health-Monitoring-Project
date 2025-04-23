@@ -101,10 +101,34 @@ class ReadingsAverage {
 let avrgHR = new ReadingsAverage(30);
 let avrgBP = new ReadingsAverage(30);
 
+const lastReadForDevice = {};
+const avrgHistoryForDevice = {};
+
+const historyMinutesGroup = 5;
+
 server.on("message", (topic, payload) => {
-  // if (topic === process.env.MQTT_SUB_TOPIC) {
+  const device = topic.split("/")[2];
   const data = JSON.parse(payload.toString());
 
+  // orario arrotondato per "historyMinutesGroup" (limite superiore)
+  const currentDate = new Date();
+  const minutes = currentDate.getMinutes();
+  const roundedMinutes =
+    Math.ceil(minutes / historyMinutesGroup) * historyMinutesGroup;
+  if (roundedMinutes === 60) {
+    currentDate.setHours(currentDate.getHours() + 1);
+    roundedMinutes = 0;
+  }
+  currentDate.setMinutes(roundedMinutes);
+  currentDate.setSeconds(0);
+  currentDate.setMilliseconds(0);
+  const endTimestamp = Math.floor(currentDate.getTime() / 1000);
+
+  // memorizza timestamp ultima letture del sensore
+  let deviceTimestamp = data.state.reported["timestamp"];
+  lastReadForDevice[device] = deviceTimestamp;
+
+  // lettura dati sensori
   let heartRate = undefined;
   if (data && data.state.reported["heart-rate"] !== undefined)
     heartRate = data.state.reported["heart-rate"];
@@ -113,8 +137,44 @@ server.on("message", (topic, payload) => {
   if (data && data.state.reported["blood-pressure"] !== undefined)
     bloodPressure = data.state.reported["blood-pressure"];
 
-  let device = topic.split("/")[2];
+  // aggiornamento in tempo reale history paziente
+  if (!(device in avrgHistoryForDevice))
+    avrgHistoryForDevice[device] = {
+      "heart-rate": 0,
+      "blood-pressure": 0,
+      count: 0,
+    };
 
+  if (deviceTimestamp < endTimestamp) {
+    avrgHistoryForDevice[device]["heart-rate"] += heartRate;
+    avrgHistoryForDevice[device]["blood-pressure"] += bloodPressure;
+    avrgHistoryForDevice[device]["count"] += 1;
+  } else {
+    const itemDate = new Date(endTimestamp - historyMinutesGroup * 60 * 1000);
+    const hours = itemDate.getHours().toString().padStart(2, "0");
+    const minutes = itemDate.getMinutes().toString().padStart(2, "0");
+
+    io.emit(`/device/${device}/param/HeartRate/history/updates`, {
+      timestamp: `${hours}:${minutes}`,
+      value: parseInt(
+        avrgHistoryForDevice[device]["heart-rate"] /
+          avrgHistoryForDevice[device]["count"]
+      ),
+    });
+    io.emit(`/device/${device}/param/BloodPressure/history/updates`, {
+      timestamp: `${hours}:${minutes}`,
+      value: parseInt(
+        avrgHistoryForDevice[device]["blood-pressure"] /
+          avrgHistoryForDevice[device]["count"]
+      ),
+    });
+
+    avrgHistoryForDevice[device]["heart-rate"] = 0;
+    avrgHistoryForDevice[device]["blood-pressure"] = 0;
+    avrgHistoryForDevice[device]["count"] = 0;
+  }
+
+  // ERRORE: se ci sono piu device, fai la media dei dati di tutti i device (avrgHR e avrgBP)
   io.emit(`/device/${device}/updates`, {
     device: device,
     heartRate: heartRate,
@@ -122,7 +182,6 @@ server.on("message", (topic, payload) => {
     bloodPressure: bloodPressure,
     bloodPressureAvg: Math.floor(avrgBP.addValue(bloodPressure)),
   });
-  // }
 
   // Gestione del controllo del buzzer del device
   // if (bloodPressure > 120 || heartRate > 120) {

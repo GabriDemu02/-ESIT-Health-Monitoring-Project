@@ -134,9 +134,14 @@ void sendData(int heartRate, int bloodPressure) {
   JsonObject state = root.createNestedObject("state");
   JsonObject state_reported = state.createNestedObject("reported");
 
+  struct tm timeinfo;
+  getLocalTime(&timeinfo);
+  time_t now = mktime(&timeinfo);
+
   state_reported["id"] = THINGNAME;
   state_reported["heart-rate"] = heartRate;
   state_reported["blood-pressure"] = bloodPressure;
+  state_reported["timestamp"] = now;
   Serial.printf("Sending [%s]: ", MQTT_PUB_TOPIC);
   serializeJson(root, Serial);
   Serial.println();
