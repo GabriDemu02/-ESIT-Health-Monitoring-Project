@@ -23,6 +23,7 @@ function Admin() {
       component: (
         <AdminDoctorsPatientDashboard
           doctors={doctors}
+          setDoctors={setDoctors}
           patients={patients}
           setPatients={setPatients}
         />

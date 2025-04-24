@@ -292,12 +292,34 @@ app.post("/api/login", async (req, res) => {
 // ****** ADMIN DASHBOARD ****** //
 ///////////////////////////////////
 
+async function getDoctorsPatients(doctor) {
+
+  scanParams = {
+    TableName: REC_DB,
+    FilterExpression: "doctor = :doc AND end_timestamp = :open",
+    ExpressionAttributeValues: { 
+      ":doc": doctor, 
+      ":open": "-1" 
+    },
+  }
+  const scanRes = await docClient.send( new ScanCommand(scanParams) );
+  return scanRes.Count;
+}
+
 app.get("/api/doctors", async (req, res) => {
   try {
     const scanRes = await docClient.send(
       new ScanCommand({ TableName: DOC_DB })
     );
-    res.json(scanRes.Items);
+
+    const data = [];
+
+    for (let doc of scanRes.Items) {
+      let count = await getDoctorsPatients(doc.Doctor_Prefix+doc.Doctor_ID);
+      data.push({...doc, patients: count})
+    }
+
+    res.json(data);
   } catch (error) {
     console.error("Errore nello scan del DB: ", error);
     res.status(500).json({ error: error.message });
@@ -309,10 +331,11 @@ app.get("/api/patients", async (req, res) => {
     const params = {
       TableName: REC_DB,
       FilterExpression: "end_timestamp = :open",
-      ExpressionAttributeValues: { ":open": -1 },
+      ExpressionAttributeValues: { ":open": "-1" },
     };
 
     const scanRes = await docClient.send(new ScanCommand(params));
+
     res.json(scanRes.Items);
   } catch (error) {
     console.error("Errore nello scan del DB: ", error);
@@ -320,24 +343,50 @@ app.get("/api/patients", async (req, res) => {
   }
 });
 
-app.post("/api/patient/:id/docChange", async (req, res) => {
+app.post("/api/patient/:id/doctor", async (req, res) => {
+  try {
+    taxCode = req.params.id;
+    start_ts = req.body.start_ts;
+    const updateParams = {
+      TableName: REC_DB,
+      Key: {
+        TaxCode: taxCode,
+        start_timestamp: start_ts,
+      },
+      UpdateExpression: "SET doctor = :newDoc",
+      ExpressionAttributeValues: {
+        ":newDoc": req.body.doctor,
+      },
+      ReturnValues: "ALL_NEW",
+    };
 
+    const updateDoc = await docClient.send(new UpdateCommand(updateParams));
+
+    return res.json({
+      message: `Dottore del paziente "${taxCode}" aggiornato con successo.`
+    });
+
+  } catch (error) {
+    console.error("Errore nell'update del DB: ", error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post("/api/patient/:id/release", async (req, res) => {
   try {
     const taxCode = req.params.id;
+    console.log("release: ", taxCode);
 
     const queryParams = {
       TableName: REC_DB,
       KeyConditionExpression: "TaxCode = :tax",
       ExpressionAttributeValues: { ":tax": taxCode },
-      ScanIndexForward: false, // → decrescente
+      ScanIndexForward: false, 
       Limit: 1,
     };
     const { Items = [] } = await docClient.send(new QueryCommand(queryParams));
     const lastRec = Items[0];
-    if (!lastRec || lastRec.end_timestamp !== -1) {
+    if (!lastRec || lastRec.end_timestamp !== "-1") {
       return res.status(409).json({
         error: `Nessun ricovero aperto per il paziente "${taxCode}".`,
       });
@@ -372,7 +421,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
       ConditionExpression: "end_timestamp = :open",
       ExpressionAttributeValues: {
         ":ts": now,
-        ":open": -1,
+        ":open": "-1",
       },
       ReturnValues: "ALL_NEW",
     };
@@ -380,6 +429,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
     const update = await docClient.send(new UpdateCommand(updateParams));
 
     return res.json({
+      patient: taxCode,
       message: `Paziente "${taxCode}" dimesso con successo.`,
       end_timestamp: update.end_timestamp,
     });
@@ -548,7 +598,7 @@ app.post("/api/addPatient", async (req, res) => {
     };
     const { Items = [] } = await docClient.send(new QueryCommand(queryParams));
     const lastRec = Items[0];
-    if (lastRec && lastRec.end_timestamp === -1) {
+    if (lastRec && lastRec.end_timestamp === "-1") {
       return res.status(409).json({
         message: `Il paziente "${TaxCode}" risulta già ricoverato.`,
       });
@@ -594,7 +644,7 @@ app.post("/api/addPatient", async (req, res) => {
       Item: {
         TaxCode: TaxCode,
         start_timestamp: startTs,
-        end_timestamp: -1,
+        end_timestamp: "-1",
         name: name,
         surname: surname,
         bed: bed,
@@ -643,7 +693,7 @@ async function getRicoveries() {
       TableName: REC_DB,
       FilterExpression: "#Att = :Val",
       ExpressionAttributeNames: { "#Att": "end_timestamp" },
-      ExpressionAttributeValues: { ":Val": -1 },
+      ExpressionAttributeValues: { ":Val": "-1" },
     };
 
     const scanRes = await docClient.send(new ScanCommand(recScanParams));
@@ -694,7 +744,7 @@ app.get("/api/doctor/:id/patients", async (req, res) => {
       FilterExpression: "doctor = :id AND end_timestamp = :recovered",
       ExpressionAttributeValues: {
         ":id": doctorID,
-        ":recovered": -1,
+        ":recovered": "-1",
       },
     });
 

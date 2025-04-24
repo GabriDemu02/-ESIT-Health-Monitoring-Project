@@ -8,30 +8,39 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import axios from "axios";
 
-function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
+function AdminDoctorsPatientDashboard({ doctors, setDoctors, patients, setPatients }) {
   const [searchDoctor, setSearchDoctor] = useState("");
   const [searchPatient, setSearchPatient] = useState("");
   const [doctorFilter, setDoctorFilter] = useState("");
-  const [doctor, setDoctor] = useState("");
 
-  const doctorInput = useRef(null);
+  //const doctorInput = useRef(null);
 
-  const handleDoctor = (e) => {
-    setDoctor(e.target.value);
-    doctorInput.current.children[1].style.border = "";
-    doctorInput.current.children[2].innerText = "";
+  const handleDoctor = (taxCode, start_timestamp) => async (e) => {
+    const newDoctor = e.target.value;
+    const prevDoctor = patients[patients.findIndex(obj => obj.TaxCode === taxCode)].doctor;
+
+    axios.post(
+        `${process.env.REACT_APP_SERVER_API_URL}/patient/${taxCode}/doctor`,
+        { doctor: newDoctor, start_ts: start_timestamp }
+      ).then(res =>  {
+        setPatients((prev) => prev.map((p) => 
+          p.TaxCode === taxCode ? { ...p, doctor: newDoctor } : p )
+        );
+        setDoctors((prev) => prev.map(doc => 
+          doc.Doctor_Prefix + doc.Doctor_ID === prevDoctor
+            ? {...doc, patients: doc.patients - 1}
+            : doc.Doctor_Prefix + doc.Doctor_ID === newDoctor
+              ? {...doc, patients: doc.patients + 1}
+              : doc)
+        );
+      }).catch (error => {
+      console.error(error);
+    })
   };
 
-  //useEffect(() => {
-  //  axios
-  //    .get(`${process.env.REACT_APP_SERVER_API_URL}/patient/${id}/docChange`)
-  //    .then((res) => {
-  //      setDoctor(res.data);
-  //    })
-  //    .catch((error) => {
-  //      console.log(error);
-  //    });
-  //}, []);
+  const handlePatients = () => async (e) => {
+
+  };
 
 
   return (
@@ -185,7 +194,7 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
                       <select
                         value={patient.doctor}
                         className="admin-dashboard-doctors-patients-patient-select"
-                        onChange={handleDoctor}
+                        onChange={handleDoctor(patient.TaxCode, patient.start_timestamp)}
                       >
                         {doctors.map((doctor) => {
                           return (
@@ -207,10 +216,11 @@ function AdminDoctorsPatientDashboard({ doctors, patients, setPatients }) {
                             .post(
                               `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.TaxCode}/release`
                             )
-                            .then((data) => {
-                              const { [patient.id]: _, ...filteredPatients } =
-                                patients;
-                              setPatients(filteredPatients);
+                            .then((res) => {
+                              // const { [patient.id]: _, ...filteredPatients } =
+                              //   patients;
+                              // setPatients(filteredPatients);
+                              setPatients(patients.filter(patient => patient.TaxCode !== res.data.taxCode));
                             })
                             .catch((error) => console.log(error));
                         }}
