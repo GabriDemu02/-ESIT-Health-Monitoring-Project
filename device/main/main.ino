@@ -52,10 +52,6 @@ void NTPConnect(void) {
 #define buzzer D7
 
 void callback(String& topic, String& payload) {
-  // todo: attivare e disattivare il buzzer
-  // tone(buzzer, 4000, 200);
-  //Serial.println("BEEEP");
-
   StaticJsonDocument<128> doc;
 
   // Parse the JSON

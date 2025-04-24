@@ -106,6 +106,55 @@ const avrgHistoryForDevice = {};
 
 const historyMinutesGroup = 5;
 
+async function thresholdsControl(device, bloodPressure, heartRate) {
+
+  let minThresholdBloodPressure, minThresholdHeartRate;
+  let maxThresholdBloodPressure, maxThresholdHeartRate;
+
+  const getParams = {
+    TableName: BED_DB,
+    FilterExpression: "ID_Dev = :dev",
+    ExpressionAttributeValues: { ":dev": device },
+  };
+  const getRes = await docClient.send(new ScanCommand(getParams));
+  if (!getRes && !getRes.Count === 0) {
+    return res.status(500).json({
+      error: `Il dispositivo ${device} non è assoicato ad alcun letto.`,
+    });
+  }
+  
+  taxCode = getRes.Items[0].ID_Patient;
+  console.log("ID: ", taxCode);
+  const getParamsThresholds = {
+    TableName: PAT_DB,
+    Key: { "TaxCode": taxCode },
+  };
+  const getResTh = await docClient.send(new ScanCommand(getParamsThresholds));
+  if (!getResTh && !getResTh.Count === 0) {
+    return res.status(500).json({
+      error: `Il paziente ${taxCode} non è registrato.`,
+    });
+  }
+
+  thresholds = getResTh.Items[0];
+  console.log(thresholds);
+
+  minThresholdBloodPressure = thresholds.minThresholdBloodPressure;
+  maxThresholdBloodPressure = thresholds.maxThresholdBloodPressure;
+  minThresholdHeartRate = thresholds.minThresholdHeartRate;
+  maxThresholdHeartRate = thresholds.maxThresholdHeartRate;
+
+  // Gestione del controllo del buzzer del device
+  if ((bloodPressure < minThresholdBloodPressure || bloodPressure > maxThresholdBloodPressure) || 
+      (heartRate < minThresholdHeartRate || heartRate > maxThresholdHeartRate)) {
+    //sendAllarm(device, true);
+    return true;
+  } else { 
+    //sendAllarm(device, false);
+    return false; }
+  
+}
+
 server.on("message", (topic, payload) => {
   const device = topic.split("/")[2];
   const data = JSON.parse(payload.toString());
@@ -172,6 +221,7 @@ server.on("message", (topic, payload) => {
     avrgHistoryForDevice[device]["heart-rate"] = 0;
     avrgHistoryForDevice[device]["blood-pressure"] = 0;
     avrgHistoryForDevice[device]["count"] = 0;
+
   }
 
   // ERRORE: se ci sono piu device, fai la media dei dati di tutti i device (avrgHR e avrgBP)
@@ -183,10 +233,9 @@ server.on("message", (topic, payload) => {
     bloodPressureAvg: Math.floor(avrgBP.addValue(bloodPressure)),
   });
 
-  // Gestione del controllo del buzzer del device
-  // if (bloodPressure > 120 || heartRate > 120) {
-  //   sendAllarm(device, true);
-  // } else sendAllarm(device, false);
+  console.log(device);
+  thresholdsControl(device, bloodPressure, heartRate);
+  
 });
 
 // ****** REGISTRAZIONE ****** //
@@ -732,7 +781,9 @@ app.post("/api/recoveries", async (req, res) => {
   }
 });
 
-// API medici
+// ****** DOCTOR DASHBOARD ****** //
+////////////////////////////////////
+
 app.get("/api/doctor/:id/patients", async (req, res) => {
   let doctorID = req.params.id;
 
@@ -767,7 +818,9 @@ app.get("/api/doctor/:id/patients", async (req, res) => {
   }
 });
 
-// API pazienti
+// ****** PATIENT CARD ****** //
+////////////////////////////////
+
 app.get("/api/patient/:id/thresholds/:param", async (req, res) => {
   const taxCode = req.params.id;
   const param = req.params.param;
@@ -915,6 +968,7 @@ app.get(
     }
   }
 );
+
 
 app.listen(process.env.SERVER_PORT, () => {
   console.log(`Server running on port ${process.env.SERVER_PORT}`);
