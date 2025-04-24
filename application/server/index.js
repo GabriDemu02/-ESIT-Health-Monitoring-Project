@@ -73,6 +73,7 @@ server.on("connect", () => {
 
   startTimestamp = currentDate.getTime() / 1000;
   endTimestamp = new Date(startTimestamp + historyMinutesGroup * 60).getTime();
+  console.log(startTimestamp, endTimestamp);
 });
 
 socketServer.listen(process.env.SOCKET_SERVER_PORT, () => {
@@ -137,7 +138,7 @@ async function thresholdsControl(device, bloodPressure, heartRate) {
   }
 
   taxCode = getRes.Items[0].ID_Patient;
-  console.log("ID: ", taxCode);
+  // console.log("ID: ", taxCode);
   const getParamsThresholds = {
     TableName: PAT_DB,
     Key: { TaxCode: taxCode },
@@ -150,7 +151,7 @@ async function thresholdsControl(device, bloodPressure, heartRate) {
   }
 
   thresholds = getResTh.Items[0];
-  console.log(thresholds);
+  // console.log(thresholds);
 
   minThresholdBloodPressure = thresholds.minThresholdBloodPressure;
   maxThresholdBloodPressure = thresholds.maxThresholdBloodPressure;
@@ -202,7 +203,8 @@ server.on("message", (topic, payload) => {
     avrgHistoryForDevice[device]["blood-pressure"] += bloodPressure;
     avrgHistoryForDevice[device]["count"] += 1;
   } else {
-    const itemDate = new Date(startTimestamp * 1000) / 1000;
+    const itemDate = new Date(startTimestamp * 1000);
+    console.log(itemDate);
     const hours = itemDate.getHours().toString().padStart(2, "0");
     const minutes = itemDate.getMinutes().toString().padStart(2, "0");
 
@@ -224,6 +226,13 @@ server.on("message", (topic, payload) => {
     avrgHistoryForDevice[device]["heart-rate"] = 0;
     avrgHistoryForDevice[device]["blood-pressure"] = 0;
     avrgHistoryForDevice[device]["count"] = 0;
+
+    startTimestamp = endTimestamp;
+    endTimestamp = new Date(
+      startTimestamp + historyMinutesGroup * 60
+    ).getTime();
+    console.log(startTimestamp, endTimestamp);
+    console.log(new Date(startTimestamp * 1000), new Date(endTimestamp * 1000));
   }
 
   // ERRORE: se ci sono piu device, fai la media dei dati di tutti i device (avrgHR e avrgBP)
@@ -235,7 +244,6 @@ server.on("message", (topic, payload) => {
     bloodPressureAvg: Math.floor(avrgBP.addValue(bloodPressure)),
   });
 
-  console.log(device);
   thresholdsControl(device, bloodPressure, heartRate);
 });
 
@@ -920,7 +928,7 @@ app.post("/api/patient/:id/thresholds/:param", async (req, res) => {
 
 function groupData(data, param, time) {
   const buckets = {};
-  const factor = time * 60 * 1000;
+  const factor = time * 60;
 
   for (const item of data) {
     const ts = item.timestamp;
@@ -936,7 +944,7 @@ function groupData(data, param, time) {
 
   const result = {};
   for (const [timestamp, { sum, count }] of Object.entries(buckets)) {
-    const itemDate = new Date(Number(timestamp));
+    const itemDate = new Date(Number(timestamp) * 1000);
     const hours = itemDate.getHours().toString().padStart(2, "0");
     const minutes = itemDate.getMinutes().toString().padStart(2, "0");
     const key = `${hours}:${minutes}`;
@@ -958,8 +966,13 @@ app.get(
         message: `Richiesta non valida, "${param}" non e' un parametro valido`,
       });
 
+    const endOfTheDay = new Date(`${date}T23:59:59`).getTime() / 1000;
     const from = new Date(`${date}T00:00`).getTime() / 1000;
-    const to = new Date(`${date}T23:59:59`).getTime() / 1000;
+    const to = Math.min(endOfTheDay, startTimestamp - 1);
+
+    if (to < from) {
+      return res.status(200).json({});
+    }
 
     try {
       const params = {

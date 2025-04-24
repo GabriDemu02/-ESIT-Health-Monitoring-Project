@@ -200,6 +200,7 @@ function ParameterDashboard({
         `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/param/${parameterID}/history/${selectedDate}`
       )
       .then((res) => {
+        console.log(res.data);
         let historyData = [];
         for (let h = 0; h < 24; h++) {
           for (let m = 0; m < 60; m += 5) {
@@ -219,8 +220,11 @@ function ParameterDashboard({
     socket.on(
       `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`,
       (data) => {
-        console.log(data);
-        setHistory({ ...history, ...data });
+        setHistory((prev) =>
+          prev.map((e) => {
+            return e.timestamp === data.timestamp ? data : e;
+          })
+        );
       }
     );
 

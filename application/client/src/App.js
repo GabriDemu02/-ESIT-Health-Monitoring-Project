@@ -9,48 +9,52 @@ import PublicRoute from "./components/PublicRoute";
 import ConstrainedRoute from "./components/ConstrainedRoute";
 import Success from "./pages/Success";
 import { useState } from "react";
+import { Toaster } from "react-hot-toast";
 
 function App() {
   const [successPageAccess, setSuccessPageAccess] = useState(false);
 
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          <Route element={<PublicRoute />}>
-            <Route path="/login" element={<Login />} />
+    <>
+      <Toaster position="top-center" reverseOrder={false} />
+      <AuthProvider>
+        <Router>
+          <Routes>
+            <Route element={<PublicRoute />}>
+              <Route path="/login" element={<Login />} />
+              <Route
+                path="/signup"
+                element={<Signup onSuccess={setSuccessPageAccess} />}
+              />
+            </Route>
             <Route
-              path="/signup"
-              element={<Signup onSuccess={setSuccessPageAccess} />}
+              path="/"
+              element={
+                <PrivateRoute requiredRole="doctor">
+                  <Doctor />
+                </PrivateRoute>
+              }
             />
-          </Route>
-          <Route
-            path="/"
-            element={
-              <PrivateRoute requiredRole="doctor">
-                <Doctor />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <PrivateRoute requiredRole="admin">
-                <Admin />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/success"
-            element={
-              <ConstrainedRoute access={successPageAccess}>
-                <Success />
-              </ConstrainedRoute>
-            }
-          />
-        </Routes>
-      </Router>
-    </AuthProvider>
+            <Route
+              path="/admin"
+              element={
+                <PrivateRoute requiredRole="admin">
+                  <Admin />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/success"
+              element={
+                <ConstrainedRoute access={successPageAccess}>
+                  <Success />
+                </ConstrainedRoute>
+              }
+            />
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </>
   );
 }
 
