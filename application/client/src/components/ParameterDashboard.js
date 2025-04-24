@@ -219,7 +219,8 @@ function ParameterDashboard({
     socket.on(
       `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`,
       (data) => {
-        setHistory([...history, data]);
+        console.log(data);
+        setHistory({ ...history, ...data });
       }
     );
 
@@ -310,7 +311,7 @@ function ParameterDashboard({
                   (i + 1)
               ).map((value) => (
                 <ReferenceLine
-                  key={value}
+                  key={parameterID + "Line" + value}
                   y={value}
                   stroke="var(--font-color-x-transparent)"
                 />

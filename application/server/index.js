@@ -54,9 +54,25 @@ const server = awsIot.device({
   host: process.env.AWS_IOT_ENDPOINT,
 });
 
+var startTimestamp;
+var endTimestamp;
+const historyMinutesGroup = 5;
+
 server.on("connect", () => {
   console.log("Connected to AWS IoT");
   server.subscribe(process.env.MQTT_SUB_TOPIC);
+
+  // imposta data corrente
+  const currentDate = new Date();
+  const minutes = currentDate.getMinutes();
+  const roundedMinutes =
+    Math.floor(minutes / historyMinutesGroup) * historyMinutesGroup;
+  currentDate.setMinutes(roundedMinutes);
+  currentDate.setSeconds(0);
+  currentDate.setMilliseconds(0);
+
+  startTimestamp = currentDate.getTime() / 1000;
+  endTimestamp = new Date(startTimestamp + historyMinutesGroup * 60).getTime();
 });
 
 socketServer.listen(process.env.SOCKET_SERVER_PORT, () => {
@@ -104,10 +120,7 @@ let avrgBP = new ReadingsAverage(30);
 const lastReadForDevice = {};
 const avrgHistoryForDevice = {};
 
-const historyMinutesGroup = 5;
-
 async function thresholdsControl(device, bloodPressure, heartRate) {
-
   let minThresholdBloodPressure, minThresholdHeartRate;
   let maxThresholdBloodPressure, maxThresholdHeartRate;
 
@@ -122,12 +135,12 @@ async function thresholdsControl(device, bloodPressure, heartRate) {
       error: `Il dispositivo ${device} non è assoicato ad alcun letto.`,
     });
   }
-  
+
   taxCode = getRes.Items[0].ID_Patient;
   console.log("ID: ", taxCode);
   const getParamsThresholds = {
     TableName: PAT_DB,
-    Key: { "TaxCode": taxCode },
+    Key: { TaxCode: taxCode },
   };
   const getResTh = await docClient.send(new ScanCommand(getParamsThresholds));
   if (!getResTh && !getResTh.Count === 0) {
@@ -145,33 +158,23 @@ async function thresholdsControl(device, bloodPressure, heartRate) {
   maxThresholdHeartRate = thresholds.maxThresholdHeartRate;
 
   // Gestione del controllo del buzzer del device
-  if ((bloodPressure < minThresholdBloodPressure || bloodPressure > maxThresholdBloodPressure) || 
-      (heartRate < minThresholdHeartRate || heartRate > maxThresholdHeartRate)) {
+  if (
+    bloodPressure < minThresholdBloodPressure ||
+    bloodPressure > maxThresholdBloodPressure ||
+    heartRate < minThresholdHeartRate ||
+    heartRate > maxThresholdHeartRate
+  ) {
     //sendAllarm(device, true);
     return true;
-  } else { 
+  } else {
     //sendAllarm(device, false);
-    return false; }
-  
+    return false;
+  }
 }
 
 server.on("message", (topic, payload) => {
   const device = topic.split("/")[2];
   const data = JSON.parse(payload.toString());
-
-  // orario arrotondato per "historyMinutesGroup" (limite superiore)
-  const currentDate = new Date();
-  const minutes = currentDate.getMinutes();
-  const roundedMinutes =
-    Math.ceil(minutes / historyMinutesGroup) * historyMinutesGroup;
-  if (roundedMinutes === 60) {
-    currentDate.setHours(currentDate.getHours() + 1);
-    roundedMinutes = 0;
-  }
-  currentDate.setMinutes(roundedMinutes);
-  currentDate.setSeconds(0);
-  currentDate.setMilliseconds(0);
-  const endTimestamp = Math.floor(currentDate.getTime() / 1000);
 
   // memorizza timestamp ultima letture del sensore
   let deviceTimestamp = data.state.reported["timestamp"];
@@ -199,7 +202,7 @@ server.on("message", (topic, payload) => {
     avrgHistoryForDevice[device]["blood-pressure"] += bloodPressure;
     avrgHistoryForDevice[device]["count"] += 1;
   } else {
-    const itemDate = new Date(endTimestamp - historyMinutesGroup * 60 * 1000);
+    const itemDate = new Date(startTimestamp * 1000) / 1000;
     const hours = itemDate.getHours().toString().padStart(2, "0");
     const minutes = itemDate.getMinutes().toString().padStart(2, "0");
 
@@ -221,7 +224,6 @@ server.on("message", (topic, payload) => {
     avrgHistoryForDevice[device]["heart-rate"] = 0;
     avrgHistoryForDevice[device]["blood-pressure"] = 0;
     avrgHistoryForDevice[device]["count"] = 0;
-
   }
 
   // ERRORE: se ci sono piu device, fai la media dei dati di tutti i device (avrgHR e avrgBP)
@@ -235,7 +237,6 @@ server.on("message", (topic, payload) => {
 
   console.log(device);
   thresholdsControl(device, bloodPressure, heartRate);
-  
 });
 
 // ****** REGISTRAZIONE ****** //
@@ -793,7 +794,7 @@ app.get("/api/doctor/:id/patients", async (req, res) => {
       FilterExpression: "doctor = :id AND end_timestamp = :recovered",
       ExpressionAttributeValues: {
         ":id": doctorID,
-        ":recovered": "-1",
+        ":recovered": -1,
       },
     });
 
@@ -968,7 +969,6 @@ app.get(
     }
   }
 );
-
 
 app.listen(process.env.SERVER_PORT, () => {
   console.log(`Server running on port ${process.env.SERVER_PORT}`);
