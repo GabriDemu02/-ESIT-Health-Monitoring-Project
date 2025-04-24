@@ -222,7 +222,7 @@ function AdminDoctorsPatientDashboard({
                       {patient.name} {patient.surname}
                     </th>
                     <th>{patient.bed}</th>
-                    <th>{patient.deviceStatus}</th>
+                    <th>{patient.device}</th>
                     <th className="bold">
                       <select
                         value={patient.doctor}

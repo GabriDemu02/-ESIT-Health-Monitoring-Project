@@ -72,7 +72,7 @@ void callback(String& topic, String& payload) {
   // Se il messaggio arriva sul topic del buzzer
   if (String(topic).equals(MQTT_SUB_TOPIC)) {
     if (message) {
-      tone(buzzer, 4000, 200); // Accendo il buzzer
+      tone(buzzer, 4000); // Accendo il buzzer
       Serial.println("Buzzer ATTIVATO!");
     } else {
       Serial.println("Buzzer SPENTO!");
