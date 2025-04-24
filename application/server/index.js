@@ -45,6 +45,7 @@ const REC_DB = "RecoveryHistory";
 const ADM_DB = "Admins";
 const DEV_DB = "DeviceData";
 const PAT_DB = "PatientThresholds";
+const ALL_DB = "AlarmHistoryData";
 
 const server = awsIot.device({
   keyPath: process.env.AWS_CERT_KEY,
@@ -120,9 +121,12 @@ let avrgBP = new ReadingsAverage(30);
 const lastReadForDevice = {};
 const avrgHistoryForDevice = {};
 
+// ****** CONTROLLO SOGLIE D'ALLARME ****** //
+//////////////////////////////////////////////
+
+const deviceAlarm = {};
+
 async function thresholdsControl(device, bloodPressure, heartRate) {
-  let minThresholdBloodPressure, minThresholdHeartRate;
-  let maxThresholdBloodPressure, maxThresholdHeartRate;
 
   const getParams = {
     TableName: BED_DB,
@@ -137,42 +141,43 @@ async function thresholdsControl(device, bloodPressure, heartRate) {
   }
 
   taxCode = getRes.Items[0].ID_Patient;
-  console.log("ID: ", taxCode);
   const getParamsThresholds = {
     TableName: PAT_DB,
     Key: { TaxCode: taxCode },
   };
-  const getResTh = await docClient.send(new ScanCommand(getParamsThresholds));
-  if (!getResTh && !getResTh.Count === 0) {
+  const getResTh = await docClient.send(new GetCommand(getParamsThresholds));
+  if (!getResTh && !getResTh.Item) {
     return res.status(500).json({
       error: `Il paziente ${taxCode} non è registrato.`,
     });
   }
 
-  thresholds = getResTh.Items[0];
-  console.log(thresholds);
-
-  minThresholdBloodPressure = thresholds.minThresholdBloodPressure;
-  maxThresholdBloodPressure = thresholds.maxThresholdBloodPressure;
-  minThresholdHeartRate = thresholds.minThresholdHeartRate;
-  maxThresholdHeartRate = thresholds.maxThresholdHeartRate;
+  const {
+    minThresholdBloodPressure,
+    maxThresholdBloodPressure,
+    minThresholdHeartRate,
+    maxThresholdHeartRate,
+  } = getResTh.Item;
 
   // Gestione del controllo del buzzer del device
-  if (
-    bloodPressure < minThresholdBloodPressure ||
-    bloodPressure > maxThresholdBloodPressure ||
-    heartRate < minThresholdHeartRate ||
-    heartRate > maxThresholdHeartRate
-  ) {
-    //sendAllarm(device, true);
-    return true;
-  } else {
-    //sendAllarm(device, false);
-    return false;
-  }
+  return {
+    minThresholdBloodPressure: minThresholdBloodPressure,
+    maxThresholdBloodPressure: maxThresholdBloodPressure,
+    minThresholdHeartRate: minThresholdHeartRate,
+    maxThresholdHeartRate: maxThresholdHeartRate,
+    alarm: (
+      bloodPressure < minThresholdBloodPressure ||
+      bloodPressure > maxThresholdBloodPressure ||
+      heartRate < minThresholdHeartRate ||
+      heartRate > maxThresholdHeartRate
+    )
+  };
 }
 
-server.on("message", (topic, payload) => {
+// ****** RICEZIONE DATI MQTT ****** //
+///////////////////////////////////////
+
+server.on("message", async (topic, payload) => {
   const device = topic.split("/")[2];
   const data = JSON.parse(payload.toString());
 
@@ -202,7 +207,7 @@ server.on("message", (topic, payload) => {
     avrgHistoryForDevice[device]["blood-pressure"] += bloodPressure;
     avrgHistoryForDevice[device]["count"] += 1;
   } else {
-    const itemDate = new Date(startTimestamp * 1000) / 1000;
+    const itemDate = new Date(startTimestamp * 1000);
     const hours = itemDate.getHours().toString().padStart(2, "0");
     const minutes = itemDate.getMinutes().toString().padStart(2, "0");
 
@@ -235,9 +240,61 @@ server.on("message", (topic, payload) => {
     bloodPressureAvg: Math.floor(avrgBP.addValue(bloodPressure)),
   });
 
-  console.log(device);
-  thresholdsControl(device, bloodPressure, heartRate);
+  // CONTROLLO SOGLIE
+  const alarmFlag = await thresholdsControl(device, Math.floor(avrgBP.addValue(bloodPressure)), Math.floor(avrgHR.addValue(heartRate)));
+
+  if (!(device in deviceAlarm))
+    deviceAlarm[device] = {
+      state: false,
+      start: undefined
+    };
+
+  if (deviceAlarm[device].state && !alarmFlag.alarm) {
+    console.log("deactivated");
+    sendAllarm(device, false);
+    deviceAlarm[device].state = false;
+    
+    const updateParams = {
+      TableName: ALL_DB,
+      Key: {
+        ID: device,
+        start_timestamp: deviceAlarm[device].start,
+      },
+      UpdateExpression: "SET end_timestamp = :end",
+      ExpressionAttributeValues: {
+        ":end": Math.floor(Date.now() / 1000)
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const updateDoc = await docClient.send(new UpdateCommand(updateParams));
+
+  } else if (!deviceAlarm[device].state && alarmFlag.alarm) {
+    console.log("active");
+    sendAllarm(device, true);
+    deviceAlarm[device].state = true;
+    deviceAlarm[device].start = Math.floor(Date.now() / 1000);
+
+    const putParams = {
+      TableName: ALL_DB,
+      Item: {
+        ID: device,
+        start_timestamp: deviceAlarm[device].start,
+        end_timestamp: -1,
+        avrgBP: Math.floor(avrgBP.addValue(bloodPressure)),
+        avrgHR: Math.floor(avrgHR.addValue(heartRate)),
+        minBP: alarmFlag.minThresholdBloodPressure,
+        minHR: alarmFlag.minThresholdHeartRate,
+        maxBP: alarmFlag.maxThresholdBloodPressure,
+        maxHR: alarmFlag.maxThresholdHeartRate,
+      },
+    }
+    const putRes = await docClient.send(new PutCommand(putParams));
+  }
 });
+
+// ****** APIS INTERFACCIA UTENTE ****** //
+///////////////////////////////////////////
 
 // ****** REGISTRAZIONE ****** //
 /////////////////////////////////
@@ -383,6 +440,19 @@ app.get("/api/doctors", async (req, res) => {
   }
 });
 
+async function getDevice(patient) {
+  const params =  {
+    TableName: BED_DB,
+    FilterExpression: "ID_Patient = :tc",
+    ExpressionAttributeValues: {
+      ":tc": patient,
+    },
+  };
+  const scanRes = await docClient.send(new ScanCommand(params));
+
+  return scanRes.Items[0].ID_Dev;
+}
+
 app.get("/api/patients", async (req, res) => {
   try {
     const params = {
@@ -390,10 +460,15 @@ app.get("/api/patients", async (req, res) => {
       FilterExpression: "end_timestamp = :open",
       ExpressionAttributeValues: { ":open": -1 },
     };
-
     const scanRes = await docClient.send(new ScanCommand(params));
 
-    res.json(scanRes.Items);
+    const data = [];
+    for (let p of scanRes.Items) {
+      let dev = await getDevice(p.TaxCode);
+      data.push({ ...p, device: dev });
+    }
+
+    res.json(data);
   } catch (error) {
     console.error("Errore nello scan del DB: ", error);
     res.status(500).json({ error: error.message });
@@ -703,10 +778,10 @@ app.post("/api/addPatient", async (req, res) => {
       },
       ReturnValues: "ALL_NEW",
     };
-    const update = await docClient.send(new UpdateCommand(updateParams));
+    await docClient.send(new UpdateCommand(updateParams));
 
     // INSERISCO IL NUOVO RICOVERO DEL PAZIENTE
-    const startTs = Date.now().toString();
+    const startTs = Date.now();
     const newPat = {
       TableName: REC_DB,
       Item: {
