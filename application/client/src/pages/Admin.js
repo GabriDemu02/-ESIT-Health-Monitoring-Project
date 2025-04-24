@@ -37,6 +37,7 @@ function Admin() {
         <AdminManagementDashboard
           availableDoctors={doctors}
           setPatients={setPatients}
+          setDoctors={setDoctors}
         />
       ),
     },

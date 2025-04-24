@@ -9,10 +9,15 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import io from "socket.io-client";
+import toast from "react-hot-toast";
 
 const socket = io(process.env.REACT_APP_SOCKET_URL);
 
-function AdminManagementDashboard({ availableDoctors, setPatients }) {
+function AdminManagementDashboard({
+  availableDoctors,
+  setPatients,
+  setDoctors,
+}) {
   const [applicationRequests, setApplicationRequests] = useState([]);
   const [availableBedrooms, setAvailableBedrooms] = useState([]);
 
@@ -114,13 +119,27 @@ function AdminManagementDashboard({ availableDoctors, setPatients }) {
           { headers: { "Content-Type": "application/json" } }
         )
         .then((res) => {
-          alert(res.data.message);
-          setPatients((prev) => [...prev, newPatient]);
+          toast.success(res.data.message); // todo: non so perche ma non funziona
+
+          // resetta form
           setName("");
           setSurname("");
           setTaxCode("");
           setDoctor("");
           setBedroom("");
+
+          // aggiungi paziente alla lista dei pazienti
+          setPatients((prev) => [...prev, newPatient]);
+          setAvailableBedrooms(
+            availableBedrooms.filter((bed) => bed.ID_Bed !== bedroom)
+          );
+          setDoctors((prev) =>
+            prev.map((doc) =>
+              doc.Doctor_Prefix + doc.Doctor_ID === doctor
+                ? { ...doc, patients: doc.patients + 1 }
+                : doc
+            )
+          );
         })
         .catch((error) => {
           taxCodeInput.current.children[1].style.border = "2px solid red";
@@ -157,7 +176,9 @@ function AdminManagementDashboard({ availableDoctors, setPatients }) {
   const handleApplicationReception = (add) => {
     axios
       .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
-      .then((_) => {
+      .then((res) => {
+        console.log(res.data.doctor);
+        setDoctors((prev) => [...prev, res.data.doctor]);
         setApplicationRequests((prev) =>
           prev.filter((application) => application.TaxCode !== add)
         );

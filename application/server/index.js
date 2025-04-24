@@ -287,6 +287,14 @@ app.post("/api/signup", async (req, res) => {
     };
     await docClient.send(new PutCommand(newApp));
 
+    io.emit("newApplicationRequest", {
+      TaxCode: taxCode,
+      name: name,
+      surname: surname,
+      telegramUsername: telegramUsername,
+      password: password,
+    });
+
     res.json({ message: `L'utente "${taxCode}" candidato con successo!` }); // registrazione conclusa senza errori
   } catch (error) {
     console.error(
@@ -348,7 +356,7 @@ async function getDoctorsPatients(doctor) {
     FilterExpression: "doctor = :doc AND end_timestamp = :open",
     ExpressionAttributeValues: {
       ":doc": doctor,
-      ":open": "-1",
+      ":open": -1,
     },
   };
   const scanRes = await docClient.send(new ScanCommand(scanParams));
@@ -380,7 +388,7 @@ app.get("/api/patients", async (req, res) => {
     const params = {
       TableName: REC_DB,
       FilterExpression: "end_timestamp = :open",
-      ExpressionAttributeValues: { ":open": "-1" },
+      ExpressionAttributeValues: { ":open": -1 },
     };
 
     const scanRes = await docClient.send(new ScanCommand(params));
@@ -434,7 +442,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
     };
     const { Items = [] } = await docClient.send(new QueryCommand(queryParams));
     const lastRec = Items[0];
-    if (!lastRec || lastRec.end_timestamp !== "-1") {
+    if (!lastRec || lastRec.end_timestamp !== -1) {
       return res.status(409).json({
         error: `Nessun ricovero aperto per il paziente "${taxCode}".`,
       });
@@ -469,7 +477,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
       ConditionExpression: "end_timestamp = :open",
       ExpressionAttributeValues: {
         ":ts": now,
-        ":open": "-1",
+        ":open": -1,
       },
       ReturnValues: "ALL_NEW",
     };
@@ -477,7 +485,6 @@ app.post("/api/patient/:id/release", async (req, res) => {
     const update = await docClient.send(new UpdateCommand(updateParams));
 
     return res.json({
-      patient: taxCode,
       message: `Paziente "${taxCode}" dimesso con successo.`,
       end_timestamp: update.end_timestamp,
     });
@@ -621,7 +628,20 @@ app.post("/api/application/:id/accept", async (req, res) => {
 
     await docClient.send(new PutCommand(newDoc));
 
-    return res.status(200).json({ message: "Nuovo dottore accettato!" });
+    return res.status(200).json({
+      message: "Nuovo dottore accettato!",
+      doctor: {
+        Doctor_Prefix: userPrefix,
+        Doctor_ID: userID,
+        taxCode: application.TaxCode,
+        email: userPrefix + userID + "@hm.doctor.it",
+        name: application.name,
+        surname: application.surname,
+        telegramUsername: application.telegramUsername,
+        password: application.password,
+        patients: 0,
+      },
+    });
   } catch (error) {
     console.error("Errore nell'accettazione candidatura: ", error);
     return res.status(500).json({ message: "Errore interno." });
@@ -646,7 +666,7 @@ app.post("/api/addPatient", async (req, res) => {
     };
     const { Items = [] } = await docClient.send(new QueryCommand(queryParams));
     const lastRec = Items[0];
-    if (lastRec && lastRec.end_timestamp === "-1") {
+    if (lastRec && lastRec.end_timestamp === -1) {
       return res.status(409).json({
         message: `Il paziente "${TaxCode}" risulta già ricoverato.`,
       });
@@ -692,7 +712,7 @@ app.post("/api/addPatient", async (req, res) => {
       Item: {
         TaxCode: TaxCode,
         start_timestamp: startTs,
-        end_timestamp: "-1",
+        end_timestamp: -1,
         name: name,
         surname: surname,
         bed: bed,
