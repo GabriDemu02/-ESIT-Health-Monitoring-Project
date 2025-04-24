@@ -74,6 +74,7 @@ server.on("connect", () => {
 
   startTimestamp = currentDate.getTime() / 1000;
   endTimestamp = new Date(startTimestamp + historyMinutesGroup * 60).getTime();
+  console.log(startTimestamp, endTimestamp);
 });
 
 socketServer.listen(process.env.SOCKET_SERVER_PORT, () => {
@@ -229,6 +230,13 @@ server.on("message", async (topic, payload) => {
     avrgHistoryForDevice[device]["heart-rate"] = 0;
     avrgHistoryForDevice[device]["blood-pressure"] = 0;
     avrgHistoryForDevice[device]["count"] = 0;
+
+    startTimestamp = endTimestamp;
+    endTimestamp = new Date(
+      startTimestamp + historyMinutesGroup * 60
+    ).getTime();
+    console.log(startTimestamp, endTimestamp);
+    console.log(new Date(startTimestamp * 1000), new Date(endTimestamp * 1000));
   }
 
   // ERRORE: se ci sono piu device, fai la media dei dati di tutti i device (avrgHR e avrgBP)
@@ -995,7 +1003,7 @@ app.post("/api/patient/:id/thresholds/:param", async (req, res) => {
 
 function groupData(data, param, time) {
   const buckets = {};
-  const factor = time * 60 * 1000;
+  const factor = time * 60;
 
   for (const item of data) {
     const ts = item.timestamp;
@@ -1011,7 +1019,7 @@ function groupData(data, param, time) {
 
   const result = {};
   for (const [timestamp, { sum, count }] of Object.entries(buckets)) {
-    const itemDate = new Date(Number(timestamp));
+    const itemDate = new Date(Number(timestamp) * 1000);
     const hours = itemDate.getHours().toString().padStart(2, "0");
     const minutes = itemDate.getMinutes().toString().padStart(2, "0");
     const key = `${hours}:${minutes}`;
@@ -1033,8 +1041,13 @@ app.get(
         message: `Richiesta non valida, "${param}" non e' un parametro valido`,
       });
 
+    const endOfTheDay = new Date(`${date}T23:59:59`).getTime() / 1000;
     const from = new Date(`${date}T00:00`).getTime() / 1000;
-    const to = new Date(`${date}T23:59:59`).getTime() / 1000;
+    const to = Math.min(endOfTheDay, startTimestamp - 1);
+
+    if (to < from) {
+      return res.status(200).json({});
+    }
 
     try {
       const params = {
