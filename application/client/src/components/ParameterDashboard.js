@@ -116,6 +116,20 @@ const CustomTooltip = ({ active, payload, label, data }) => {
   return null;
 };
 
+const generateTimeTicks = () => {
+  const ticks = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 5) {
+      const hour = h.toString().padStart(2, "0");
+      const minute = m.toString().padStart(2, "0");
+      ticks.push(`${hour}:${minute}`);
+    }
+  }
+  return ticks;
+};
+
+const ticks = generateTimeTicks();
+
 const ThresholdsSlider = styled(Slider)`
   width: 16px;
 
@@ -157,7 +171,7 @@ function ParameterDashboard({
   minThreshold,
   maxThreshold,
 }) {
-  const [thresholds, setThresholds] = useState([minThreshold, maxThreshold]);
+  const [thresholds, setThresholds] = useState();
   const [history, setHistory] = useState([]);
 
   const [editThresholds, setEditThresholds] = useState(false);
@@ -174,6 +188,7 @@ function ParameterDashboard({
         `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/thresholds/${parameterID}`
       )
       .then((res) => {
+        setThresholds(res.data);
         setNewThresholds(res.data);
       })
       .catch((error) => console.log(error));
@@ -184,7 +199,21 @@ function ParameterDashboard({
       .get(
         `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/param/${parameterID}/history/${selectedDate}`
       )
-      .then((res) => setHistory(res.data))
+      .then((res) => {
+        let historyData = [];
+        for (let h = 0; h < 24; h++) {
+          for (let m = 0; m < 60; m += 5) {
+            const hour = h.toString().padStart(2, "0");
+            const minute = m.toString().padStart(2, "0");
+            const timestamp = `${hour}:${minute}`;
+            historyData.push({
+              timestamp: timestamp,
+              value: res.data[timestamp] || null,
+            });
+          }
+        }
+        setHistory(historyData);
+      })
       .catch((error) => console.log(error));
 
     socket.on(
@@ -256,7 +285,13 @@ function ParameterDashboard({
                   <stop offset="100%" stopColor={color} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="timestamp" hide={true} />
+              <XAxis
+                dataKey="timestamp"
+                type="category"
+                ticks={ticks}
+                interval={0}
+                hide
+              />
               <YAxis hide={true} domain={[minThreshold, maxThreshold]} />
               <Tooltip content={<CustomTooltip data={{ unit: unit }} />} />
               <Area

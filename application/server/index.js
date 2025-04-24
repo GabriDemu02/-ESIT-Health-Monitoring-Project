@@ -293,16 +293,15 @@ app.post("/api/login", async (req, res) => {
 ///////////////////////////////////
 
 async function getDoctorsPatients(doctor) {
-
   scanParams = {
     TableName: REC_DB,
     FilterExpression: "doctor = :doc AND end_timestamp = :open",
-    ExpressionAttributeValues: { 
-      ":doc": doctor, 
-      ":open": "-1" 
+    ExpressionAttributeValues: {
+      ":doc": doctor,
+      ":open": "-1",
     },
-  }
-  const scanRes = await docClient.send( new ScanCommand(scanParams) );
+  };
+  const scanRes = await docClient.send(new ScanCommand(scanParams));
   return scanRes.Count;
 }
 
@@ -315,8 +314,8 @@ app.get("/api/doctors", async (req, res) => {
     const data = [];
 
     for (let doc of scanRes.Items) {
-      let count = await getDoctorsPatients(doc.Doctor_Prefix+doc.Doctor_ID);
-      data.push({...doc, patients: count})
+      let count = await getDoctorsPatients(doc.Doctor_Prefix + doc.Doctor_ID);
+      data.push({ ...doc, patients: count });
     }
 
     res.json(data);
@@ -363,9 +362,8 @@ app.post("/api/patient/:id/doctor", async (req, res) => {
     const updateDoc = await docClient.send(new UpdateCommand(updateParams));
 
     return res.json({
-      message: `Dottore del paziente "${taxCode}" aggiornato con successo.`
+      message: `Dottore del paziente "${taxCode}" aggiornato con successo.`,
     });
-
   } catch (error) {
     console.error("Errore nell'update del DB: ", error);
     res.status(500).json({ error: error.message });
@@ -381,7 +379,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
       TableName: REC_DB,
       KeyConditionExpression: "TaxCode = :tax",
       ExpressionAttributeValues: { ":tax": taxCode },
-      ScanIndexForward: false, 
+      ScanIndexForward: false,
       Limit: 1,
     };
     const { Items = [] } = await docClient.send(new QueryCommand(queryParams));
@@ -862,15 +860,14 @@ function groupData(data, param, time) {
     buckets[rounded].count += 1;
   }
 
-  const result = Object.entries(buckets).map(([timestamp, { sum, count }]) => {
+  const result = {};
+  for (const [timestamp, { sum, count }] of Object.entries(buckets)) {
     const itemDate = new Date(Number(timestamp));
     const hours = itemDate.getHours().toString().padStart(2, "0");
     const minutes = itemDate.getMinutes().toString().padStart(2, "0");
-    return {
-      timestamp: `${hours}:${minutes}`,
-      value: parseInt(sum / count),
-    };
-  });
+    const key = `${hours}:${minutes}`;
+    result[key] = Math.floor(sum / count);
+  }
 
   return result;
 }
