@@ -20,7 +20,7 @@ import axios from "axios";
 
 const socket = io(process.env.REACT_APP_SOCKET_URL);
 
-function Measurement({ label, value, children }) {
+function Measurement({ label, value, children, emergency }) {
   return (
     <div className="parameter-dashboard-measurement">
       <div>
@@ -35,7 +35,11 @@ function Measurement({ label, value, children }) {
         </div>
         {label && <div>{label}</div>}
       </div>
-      <div>{value}</div>
+      <div
+        style={{ color: emergency ? "var(--red-color)" : "var(--font-color)" }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -160,6 +164,7 @@ const ThresholdsSlider = styled(Slider)`
 
 function ParameterDashboard({
   patients,
+  emergency,
   selectedPatient,
   parameter,
   parameterID,
@@ -217,21 +222,23 @@ function ParameterDashboard({
       })
       .catch((error) => console.log(error));
 
-    socket.on(
-      `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`,
-      (data) => {
-        setHistory((prev) =>
-          prev.map((e) => {
-            return e.timestamp === data.timestamp ? data : e;
-          })
-        );
-      }
-    );
-
-    return () =>
-      socket.off(
-        `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`
+    if (selectedDate === new Date().toISOString().split("T")[0]) {
+      socket.on(
+        `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`,
+        (data) => {
+          setHistory((prev) =>
+            prev.map((e) => {
+              return e.timestamp === data.timestamp ? data : e;
+            })
+          );
+        }
       );
+
+      return () =>
+        socket.off(
+          `/device/${patients[selectedPatient].device}/param/${parameterID}/history/updates`
+        );
+    }
   }, [selectedPatient, selectedDate]);
 
   return (
@@ -249,7 +256,8 @@ function ParameterDashboard({
               <FontAwesomeIcon icon={icon} />
             </span>
           </Measurement>
-          <Measurement label="Media" value={avg}>
+          {/* TODO: il colore del testo non cambia una volta finita l'emergenza, potrebbe essere un problema in doctor */}
+          <Measurement label="Media" value={avg} emergency={emergency}>
             <TrendLine
               value={value}
               color={color}

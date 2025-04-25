@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBed,
@@ -7,6 +8,98 @@ import {
   faUserDoctor,
 } from "@fortawesome/free-solid-svg-icons";
 import axios from "axios";
+import toast from "react-hot-toast";
+
+function showConfirmToast(message, onConfirm) {
+  toast.custom(
+    (t) =>
+      ReactDOM.createPortal(
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: "24px",
+              borderRadius: "8px",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              minWidth: "300px",
+              textAlign: "center",
+            }}
+          >
+            <div>{message}</div>
+            <div
+              style={{
+                marginTop: "16px",
+                display: "flex",
+                justifyContent: "center",
+                gap: "16px",
+              }}
+            >
+              <button
+                style={{
+                  fontFamily: "inherit",
+                  fontSize: "inherit",
+                  fontWeight: "bold",
+                  background: "#fff",
+                  justifyContent: "center",
+                  border: "2px solid var(--font-color-m-transparent)",
+                  outline: "none",
+                  color: "inherit",
+                  padding: "8px",
+                  width: "50%",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                }}
+                onClick={() => toast.dismiss(t.id)}
+              >
+                Annulla
+              </button>
+              <button
+                style={{
+                  fontFamily: "inherit",
+                  fontSize: "inherit",
+                  fontWeight: "bold",
+                  background: "var(--blue-color)",
+                  justifyContent: "center",
+                  border: "2px solid var(--blue-color)",
+                  outline: "none",
+                  color: "#fff",
+                  padding: "8px",
+                  width: "50%",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  onConfirm();
+                }}
+              >
+                Conferma
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      ),
+    {
+      duration: Infinity,
+      enter: "animate__animated animate__fadeInDown",
+      exit: "animate__animated animate__fadeOutUp",
+    }
+  );
+}
 
 function AdminDoctorsPatientDashboard({
   doctors,
@@ -20,35 +113,36 @@ function AdminDoctorsPatientDashboard({
   const [doctorsList, setDoctorsList] = useState(doctors);
   const [patientsList, setPatientsList] = useState(patients);
 
-  const handleDoctor = (taxCode, start_timestamp) => async (e) => {
-    const newDoctor = e.target.value;
-    const prevDoctor =
-      patients[patients.findIndex((obj) => obj.TaxCode === taxCode)].doctor;
+  const handleDoctor = (newDoctor, taxCode, start_timestamp) => {
+    showConfirmToast("Sei sicuro di voler assegnare un nuovo medico?", () => {
+      const prevDoctor =
+        patients[patients.findIndex((obj) => obj.TaxCode === taxCode)].doctor;
 
-    axios
-      .post(
-        `${process.env.REACT_APP_SERVER_API_URL}/patient/${taxCode}/doctor`,
-        { doctor: newDoctor, start_ts: start_timestamp }
-      )
-      .then((res) => {
-        setPatients((prev) =>
-          prev.map((p) =>
-            p.TaxCode === taxCode ? { ...p, doctor: newDoctor } : p
-          )
-        );
-        setDoctors((prev) =>
-          prev.map((doc) =>
-            doc.Doctor_Prefix + doc.Doctor_ID === prevDoctor
-              ? { ...doc, patients: doc.patients - 1 }
-              : doc.Doctor_Prefix + doc.Doctor_ID === newDoctor
-              ? { ...doc, patients: doc.patients + 1 }
-              : doc
-          )
-        );
-      })
-      .catch((error) => {
-        console.error(error);
-      });
+      axios
+        .post(
+          `${process.env.REACT_APP_SERVER_API_URL}/patient/${taxCode}/doctor`,
+          { doctor: newDoctor, start_ts: start_timestamp }
+        )
+        .then((res) => {
+          setPatients((prev) =>
+            prev.map((p) =>
+              p.TaxCode === taxCode ? { ...p, doctor: newDoctor } : p
+            )
+          );
+          setDoctors((prev) =>
+            prev.map((doc) =>
+              doc.Doctor_Prefix + doc.Doctor_ID === prevDoctor
+                ? { ...doc, patients: doc.patients - 1 }
+                : doc.Doctor_Prefix + doc.Doctor_ID === newDoctor
+                ? { ...doc, patients: doc.patients + 1 }
+                : doc
+            )
+          );
+        })
+        .catch((error) => {
+          console.error(error);
+        });
+    });
   };
 
   useEffect(() => {
@@ -227,10 +321,13 @@ function AdminDoctorsPatientDashboard({
                       <select
                         value={patient.doctor}
                         className="admin-dashboard-doctors-patients-patient-select"
-                        onChange={handleDoctor(
-                          patient.TaxCode,
-                          patient.start_timestamp
-                        )}
+                        onChange={(e) =>
+                          handleDoctor(
+                            e.target.value,
+                            patient.TaxCode,
+                            patient.start_timestamp
+                          )
+                        }
                       >
                         {doctors.map((doctor) => {
                           return (
@@ -253,6 +350,7 @@ function AdminDoctorsPatientDashboard({
                               `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.TaxCode}/release`
                             )
                             .then((res) => {
+                              toast.success(res.data.message);
                               setDoctors((prev) =>
                                 prev.map((doc) =>
                                   doc.Doctor_Prefix + doc.Doctor_ID ===

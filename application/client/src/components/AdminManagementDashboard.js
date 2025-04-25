@@ -119,7 +119,7 @@ function AdminManagementDashboard({
           { headers: { "Content-Type": "application/json" } }
         )
         .then((res) => {
-          toast.success(res.data.message); // todo: non so perche ma non funziona
+          toast.success(res.data.message);
 
           // resetta form
           setName("");
@@ -165,7 +165,8 @@ function AdminManagementDashboard({
       .post(
         `${process.env.REACT_APP_SERVER_API_URL}/application/${remove}/reject`
       )
-      .then((_) => {
+      .then((res) => {
+        toast.success(res.data.message);
         setApplicationRequests((prev) =>
           prev.filter((application) => application.TaxCode !== remove)
         );
@@ -177,7 +178,7 @@ function AdminManagementDashboard({
     axios
       .post(`${process.env.REACT_APP_SERVER_API_URL}/application/${add}/accept`)
       .then((res) => {
-        console.log(res.data.doctor);
+        toast.success(res.data.message);
         setDoctors((prev) => [...prev, res.data.doctor]);
         setApplicationRequests((prev) =>
           prev.filter((application) => application.TaxCode !== add)
@@ -226,7 +227,6 @@ function AdminManagementDashboard({
         </div>
         <div
           style={{
-            padding: "0 var(--padding-big)",
             overflow: "auto",
           }}
         >

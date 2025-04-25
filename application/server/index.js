@@ -106,18 +106,18 @@ class ReadingsAverage {
 
   addValue(newValue) {
     this.values.push(newValue);
+    if (this.values.length > this.size) this.values.shift();
+  }
 
-    if (this.values.length > this.size) {
-      this.values.shift();
-    }
-
-    const sum = this.values.reduce((acc, val) => acc + val, 0);
-    return sum / this.values.length;
+  getAvrg() {
+    return parseInt(
+      this.values.reduce((acc, val) => acc + val, 0) / this.values.length
+    );
   }
 }
 
-let avrgHR = new ReadingsAverage(30);
-let avrgBP = new ReadingsAverage(30);
+let avrgSampleSize = 30;
+let deviceAvrg = {};
 
 const lastReadForDevice = {};
 const avrgHistoryForDevice = {};
@@ -128,7 +128,6 @@ const avrgHistoryForDevice = {};
 const deviceAlarm = {};
 
 async function thresholdsControl(device, bloodPressure, heartRate) {
-
   const getParams = {
     TableName: BED_DB,
     FilterExpression: "ID_Dev = :dev",
@@ -160,18 +159,20 @@ async function thresholdsControl(device, bloodPressure, heartRate) {
     maxThresholdHeartRate,
   } = getResTh.Item;
 
-  // Gestione del controllo del buzzer del device
   return {
-    minThresholdBloodPressure: minThresholdBloodPressure,
-    maxThresholdBloodPressure: maxThresholdBloodPressure,
-    minThresholdHeartRate: minThresholdHeartRate,
-    maxThresholdHeartRate: maxThresholdHeartRate,
-    alarm: (
-      bloodPressure < minThresholdBloodPressure ||
-      bloodPressure > maxThresholdBloodPressure ||
-      heartRate < minThresholdHeartRate ||
-      heartRate > maxThresholdHeartRate
-    )
+    "Pressione Sanguigna": {
+      minThreshold: minThresholdBloodPressure,
+      maxThreshold: maxThresholdBloodPressure,
+      alarm:
+        bloodPressure < minThresholdBloodPressure ||
+        bloodPressure > maxThresholdBloodPressure,
+    },
+    "Battito Cardiaco": {
+      minThreshold: minThresholdHeartRate,
+      maxThreshold: maxThresholdHeartRate,
+      alarm:
+        heartRate < minThresholdHeartRate || heartRate > maxThresholdHeartRate,
+    },
   };
 }
 
@@ -194,6 +195,15 @@ server.on("message", async (topic, payload) => {
   let bloodPressure = undefined;
   if (data && data.state.reported["blood-pressure"] !== undefined)
     bloodPressure = data.state.reported["blood-pressure"];
+
+  if (!(device in deviceAvrg))
+    deviceAvrg[device] = {
+      "Pressione Sanguigna": new ReadingsAverage(avrgSampleSize),
+      "Battito Cardiaco": new ReadingsAverage(avrgSampleSize),
+    };
+
+  deviceAvrg[device]["Pressione Sanguigna"].addValue(bloodPressure);
+  deviceAvrg[device]["Battito Cardiaco"].addValue(heartRate);
 
   // aggiornamento in tempo reale history paziente
   if (!(device in avrgHistoryForDevice))
@@ -239,65 +249,90 @@ server.on("message", async (topic, payload) => {
     console.log(new Date(startTimestamp * 1000), new Date(endTimestamp * 1000));
   }
 
-  // ERRORE: se ci sono piu device, fai la media dei dati di tutti i device (avrgHR e avrgBP)
   io.emit(`/device/${device}/updates`, {
     device: device,
     heartRate: heartRate,
-    heartRateAvg: Math.floor(avrgHR.addValue(heartRate)),
+    heartRateAvg: deviceAvrg[device]["Battito Cardiaco"].getAvrg(),
     bloodPressure: bloodPressure,
-    bloodPressureAvg: Math.floor(avrgBP.addValue(bloodPressure)),
+    bloodPressureAvg: deviceAvrg[device]["Pressione Sanguigna"].getAvrg(),
   });
 
   // CONTROLLO SOGLIE
-  const alarmFlag = await thresholdsControl(device, Math.floor(avrgBP.addValue(bloodPressure)), Math.floor(avrgHR.addValue(heartRate)));
+  const alarmFlag = await thresholdsControl(
+    device,
+    deviceAvrg[device]["Pressione Sanguigna"].getAvrg(),
+    deviceAvrg[device]["Battito Cardiaco"].getAvrg()
+  );
 
   if (!(device in deviceAlarm))
     deviceAlarm[device] = {
-      state: false,
-      start: undefined
+      "Pressione Sanguigna": {
+        state: false,
+        start: undefined,
+      },
+      "Battito Cardiaco": {
+        state: false,
+        start: undefined,
+      },
     };
 
-  if (deviceAlarm[device].state && !alarmFlag.alarm) {
-    console.log("deactivated");
-    sendAllarm(device, false);
-    deviceAlarm[device].state = false;
-    
-    const updateParams = {
-      TableName: ALL_DB,
-      Key: {
-        ID: device,
-        start_timestamp: deviceAlarm[device].start,
-      },
-      UpdateExpression: "SET end_timestamp = :end",
-      ExpressionAttributeValues: {
-        ":end": Math.floor(Date.now() / 1000)
-      },
-      ReturnValues: "ALL_NEW",
-    };
+  let alarmActive = false;
+  let emergencyStatus = false;
 
-    const updateDoc = await docClient.send(new UpdateCommand(updateParams));
+  // TODO: dato che la chiave e device e timestamp, se i 2 parametri partono allo stesso momento,
+  // uno dei 2 non verrà mai salvato, risolvere questo problemino
+  for (let param in deviceAlarm[device]) {
+    if (deviceAlarm[device][param].state && !alarmFlag[param].alarm) {
+      deviceAlarm[device][param].state = false;
+      console.log(param, "disattiva allarme");
 
-  } else if (!deviceAlarm[device].state && alarmFlag.alarm) {
-    console.log("active");
-    sendAllarm(device, true);
-    deviceAlarm[device].state = true;
-    deviceAlarm[device].start = Math.floor(Date.now() / 1000);
+      const updateParams = {
+        TableName: ALL_DB,
+        Key: {
+          ID: device,
+          start_timestamp: deviceAlarm[device][param].start,
+        },
+        UpdateExpression: "SET end_timestamp = :end",
+        ExpressionAttributeValues: {
+          ":end": Math.floor(Date.now() / 1000),
+        },
+        ReturnValues: "ALL_NEW",
+      };
 
-    const putParams = {
-      TableName: ALL_DB,
-      Item: {
-        ID: device,
-        start_timestamp: deviceAlarm[device].start,
-        end_timestamp: -1,
-        avrgBP: Math.floor(avrgBP.addValue(bloodPressure)),
-        avrgHR: Math.floor(avrgHR.addValue(heartRate)),
-        minBP: alarmFlag.minThresholdBloodPressure,
-        minHR: alarmFlag.minThresholdHeartRate,
-        maxBP: alarmFlag.maxThresholdBloodPressure,
-        maxHR: alarmFlag.maxThresholdHeartRate,
-      },
+      const updateAlarm = await docClient.send(new UpdateCommand(updateParams));
+
+      io.emit(`/device/emergencies/end`, updateAlarm.Attributes);
+    } else if (!deviceAlarm[device][param].state && alarmFlag[param].alarm) {
+      console.log(param, "attiva allarme");
+      deviceAlarm[device][param].state = true;
+      deviceAlarm[device][param].start = Math.floor(Date.now() / 1000);
+
+      const putParams = {
+        TableName: ALL_DB,
+        Item: {
+          ID: device,
+          start_timestamp: deviceAlarm[device][param].start,
+          end_timestamp: -1,
+          param: param,
+          avrg: deviceAvrg[device][param].getAvrg(),
+          minThreshold: alarmFlag[param].minThreshold,
+          maxThreshold: alarmFlag[param].maxThreshold,
+        },
+      };
+
+      await docClient.send(new PutCommand(putParams));
+
+      io.emit(`/device/emergencies/start`, { device: device, param: param });
     }
-    const putRes = await docClient.send(new PutCommand(putParams));
+
+    alarmActive ||= deviceAlarm[device][param].state;
+    emergencyStatus ||= alarmFlag[param].alarm;
+  }
+
+  if (alarmActive && !emergencyStatus) {
+    sendAllarm(device, false);
+  } else if (!alarmActive && emergencyStatus) {
+    sendAllarm(device, true);
   }
 });
 
@@ -449,7 +484,7 @@ app.get("/api/doctors", async (req, res) => {
 });
 
 async function getDevice(patient) {
-  const params =  {
+  const params = {
     TableName: BED_DB,
     FilterExpression: "ID_Patient = :tc",
     ExpressionAttributeValues: {
@@ -487,6 +522,9 @@ app.post("/api/patient/:id/doctor", async (req, res) => {
   try {
     taxCode = req.params.id;
     start_ts = req.body.start_ts;
+
+    console.log(taxCode, start_ts, req.body.doctor);
+
     const updateParams = {
       TableName: REC_DB,
       Key: {
@@ -549,7 +587,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
 
     const updateBed = await docClient.send(new UpdateCommand(updateParamsBed));
 
-    const now = Date.now();
+    const now = parseInt(Date.now() / 1000);
     const updateParams = {
       TableName: REC_DB,
       Key: {
@@ -789,7 +827,7 @@ app.post("/api/addPatient", async (req, res) => {
     await docClient.send(new UpdateCommand(updateParams));
 
     // INSERISCO IL NUOVO RICOVERO DEL PAZIENTE
-    const startTs = Date.now();
+    const startTs = parseInt(Date.now() / 1000);
     const newPat = {
       TableName: REC_DB,
       Item: {
@@ -1077,6 +1115,31 @@ app.get(
     }
   }
 );
+
+app.post("/api/device/:id/emergencies", async (req, res) => {
+  let device = req.params.id;
+  let start_ts = Number(req.body.start_timestamp);
+
+  try {
+    const params = {
+      TableName: ALL_DB,
+      KeyConditionExpression: "ID = :id AND start_timestamp >= :ts",
+      ExpressionAttributeValues: {
+        ":id": device,
+        ":ts": start_ts,
+      },
+      ScanIndexForward: false,
+    };
+
+    const result = await docClient.send(new QueryCommand(params));
+
+    res.status(200).json(result.Items);
+  } catch (error) {
+    res
+      .status(500)
+      .send("Errore durante il recupero del registro delle emergenze");
+  }
+});
 
 app.listen(process.env.SERVER_PORT, () => {
   console.log(`Server running on port ${process.env.SERVER_PORT}`);

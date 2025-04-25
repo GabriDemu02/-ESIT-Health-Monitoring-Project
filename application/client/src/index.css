@@ -304,16 +304,12 @@ tbody tr th {
 }
 
 .admin-management-application-layout {
-  width: 364px;
-  margin-bottom: var(--padding-big);
+  padding: 0 var(--padding-big) var(--padding-big) var(--padding-big);
 }
 
 .admin-management-application-layout + .admin-management-application-layout {
   border-top: 1px solid var(--font-color-x-transparent);
-}
-
-.admin-management-application-layout + .admin-management-application-layout {
-  margin-top: 1px solid var(--font-color-x-transparent);
+  padding-top: var(--padding-big);
 }
 
 .admin-management-application-layout > :first-child > div {
@@ -364,6 +360,7 @@ tbody tr th {
   flex-direction: row;
   background: none;
   margin-top: 12px;
+  width: 364px;
 }
 
 .admin-management-application-operations > div {
@@ -456,4 +453,41 @@ tbody tr th {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* confirm toast animation */
+
+.animate__animated {
+  animation-duration: 0.5s;
+  animation-fill-mode: both;
+}
+
+.animate__fadeInDown {
+  animation-name: fadeInDown;
+}
+
+.animate__fadeOutUp {
+  animation-name: fadeOutUp;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOutUp {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
 }

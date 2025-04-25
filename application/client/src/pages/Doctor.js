@@ -3,6 +3,7 @@ import Navbar from "../components/Navbar";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBed,
+  faCircleExclamation,
   faDroplet,
   faHeart,
   faMicrochip,
@@ -21,6 +22,7 @@ function Doctor() {
   const [search, setSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patients, setPatients] = useState({});
+  const [emergencyPatients, setEmergencyPatients] = useState({});
   const [selectedPatientDeviceLastValues, setSelectedPatientDeviceLastValues] =
     useState({});
   const [emergencies, setEmergencies] = useState([]);
@@ -39,20 +41,59 @@ function Doctor() {
   }, []);
 
   useEffect(() => {
+    socket.on(`/device/emergencies/start`, (data) => {
+      for (let patient in patients) {
+        if (patients[patient].device === data.device) {
+          setEmergencyPatients((prev) => {
+            let newState = { ...prev };
+            if (newState[patient]) newState[patient].push(data.param);
+            else newState[patient] = [data.param];
+            return newState;
+          });
+          break;
+        }
+      }
+    });
+
+    socket.on(`/device/emergencies/end`, (data) => {
+      for (let patient in patients) {
+        if (patients[patient].device === data.device) {
+          // TODO: problema del cambio del testo accennato in ParameterDashboard,
+          // forse qualcosa non funziona qui
+          setEmergencyPatients((prev) => {
+            let newState = { ...prev };
+            newState[patient] = newState[patient].filter(
+              (param) => param !== data.param
+            );
+            if (newState[patient].length === 0) delete newState[patient];
+            return newState;
+          });
+          break;
+        }
+      }
+      setEmergencies((prev) => [data, ...prev]);
+    });
+
+    return () => {
+      socket.off(`/device/emergencies/start`);
+      socket.off(`/device/emergencies/end`);
+    };
+  }, [patients]);
+
+  useEffect(() => {
     if (selectedPatient) {
       axios
-        .get(
-          `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/latest`
+        .post(
+          `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/emergencies`,
+          { start_timestamp: patients[selectedPatient].start_timestamp },
+          { headers: { "Content-Type": "application/json" } }
         )
-        .then((res) => setSelectedPatientDeviceLastValues(res.data))
-        .catch((error) => console.log(error));
-
-      axios
-        .get(
-          `${process.env.REACT_APP_SERVER_API_URL}/patient/${selectedPatient}/emergencies`
-        )
-        .then((res) => setEmergencies(res.data))
-        .catch((error) => console.log(error));
+        .then((res) => {
+          setEmergencies(res.data);
+        })
+        .catch((error) => {
+          console.log(error);
+        });
 
       socket.on(
         `/device/${patients[selectedPatient].device}/updates`,
@@ -61,8 +102,9 @@ function Doctor() {
         }
       );
 
-      return () =>
+      return () => {
         socket.off(`/device/${patients[selectedPatient].device}/updates`);
+      };
     }
   }, [selectedPatient]);
 
@@ -99,7 +141,72 @@ function Doctor() {
             <div style={{ marginTop: "8px" }}>Nessun paziente assegnato</div>
           ) : (
             <ul style={{ overflow: "auto", marginTop: "16px" }}>
+              {Object.keys(emergencyPatients).map((patient) => {
+                return (
+                  <li
+                    key={patient}
+                    className="navbar-doctor-patient-card"
+                    style={{
+                      background:
+                        patient === selectedPatient ? "#fff" : "transparent",
+                      boxShadow:
+                        patient === selectedPatient
+                          ? "0 0 16px #0742800d"
+                          : "none",
+                      transition: "0.2s ease",
+                    }}
+                    onClick={(e) => setSelectedPatient(patient)}
+                  >
+                    <div
+                      className="flex v-center h-center font-xsm"
+                      style={{
+                        width: "24px",
+                        height: "24px",
+                        background: "var(--red-color)",
+                        color: "#6c0707",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCircleExclamation} />
+                    </div>
+                    <div className="flex f-row v-center space-btw">
+                      <div className="bold" style={{ paddingLeft: "8px" }}>
+                        {patients[patient].name +
+                          " " +
+                          patients[patient].surname}
+                      </div>
+                      <div className="flex f-row v-center">
+                        <div style={{ width: "42px", textAlign: "right" }}>
+                          {patients[patient].bed}
+                        </div>
+                        <div
+                          className={`flex v-center font-xsm ${
+                            patients[patient].deviceStatus
+                              ? "device-active"
+                              : "device-not-active"
+                          }`}
+                          style={{
+                            padding: "6px",
+                            height: "24px",
+                            borderRadius: "3px",
+                            marginLeft: "8px",
+                          }}
+                        >
+                          <FontAwesomeIcon icon={faMicrochip} />
+                          <span style={{ paddingLeft: "4px" }}>
+                            {patients[patient].deviceStatus
+                              ? "Attivo"
+                              : "Non Attivo"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
               {Object.keys(patients).map((patient) => {
+                if (patient in emergencyPatients) return null;
+
                 return (
                   <li
                     key={patient}
@@ -210,6 +317,10 @@ function Doctor() {
           <div>
             <ParameterDashboard
               patients={patients}
+              emergency={
+                selectedPatient in emergencyPatients &&
+                emergencyPatients[selectedPatient].includes("Battito Cardiaco")
+              }
               selectedPatient={selectedPatient}
               parameter="Battito Cardiaco"
               parameterID="HeartRate"
@@ -227,6 +338,12 @@ function Doctor() {
             />
             <ParameterDashboard
               patients={patients}
+              emergency={
+                selectedPatient in emergencyPatients &&
+                emergencyPatients[selectedPatient].includes(
+                  "Pressione Sanguigna"
+                )
+              }
               selectedPatient={selectedPatient}
               parameter="Pressione Sanguigna"
               parameterID="BloodPressure"
@@ -259,28 +376,53 @@ function Doctor() {
               </thead>
               <tbody>
                 {emergencies.map((emergency, i) => {
+                  const date = new Date(emergency.start_timestamp * 1000);
+                  const duration = Math.floor(
+                    (new Date(emergency.end_timestamp * 1000) - date) / 1000
+                  );
+                  const minutes = Math.floor(duration / 60);
+                  const seconds = duration % 60;
+
+                  const unit =
+                    emergency.param === "Battito Cardiaco" ? "bpm" : "mmHg";
+
                   return (
                     <tr key={i}>
-                      <th className="bold">{emergency.date}</th>
-                      <th>{emergency.time}</th>
-                      <th>
-                        {/* TODO: formattare la durata in <mm>min <ss>sec */}
-                        {emergency.duration}
-                        {/* 2<span className="font-xsm thin">min</span> 2
-                        <span className="font-xsm thin">sec</span> */}
+                      <th className="bold">
+                        {/* TODO: quando viene aggiunto in real-time un nuovo record, qua crasha */}
+                        {Intl.DateTimeFormat("it-IT", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        }).format(date)}
                       </th>
-                      <th className="bold">{emergency.parameter}</th>
                       <th>
-                        <span className="bold">{emergency.value}</span>
-                        <span className="font-xsm thin">{emergency.unit}</span>
+                        {`${date.getHours().toString().padStart(2, "0")}:${date
+                          .getMinutes()
+                          .toString()
+                          .padStart(2, "0")}`}
+                        <span className="font-xsm thin">
+                          {`:${date.getSeconds().toString().padStart(2, "0")}`}
+                        </span>
+                      </th>
+                      <th>
+                        {minutes.toString().padStart(2, "0")}
+                        <span className="font-xsm thin">min</span>{" "}
+                        {seconds.toString().padStart(2, "0")}
+                        <span className="font-xsm thin">sec</span>
+                      </th>
+                      <th className="bold">{emergency.param}</th>
+                      <th>
+                        <span className="bold">{emergency.avrg}</span>
+                        <span className="font-xsm thin">{unit}</span>
                       </th>
                       <th>
                         {emergency.minThreshold}
-                        <span className="font-xsm thin">{emergency.unit}</span>
+                        <span className="font-xsm thin">{unit}</span>
                       </th>
                       <th>
                         {emergency.maxThreshold}
-                        <span className="font-xsm thin">{emergency.unit}</span>
+                        <span className="font-xsm thin">{unit}</span>
                       </th>
                     </tr>
                   );
