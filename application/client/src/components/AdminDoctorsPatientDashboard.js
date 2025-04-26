@@ -347,7 +347,7 @@ function AdminDoctorsPatientDashboard({
                         onClick={(e) => {
                           axios
                             .post(
-                              `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.TaxCode}/release`
+                              `${process.env.REACT_APP_SERVER_API_URL}/patient/${patient.TaxCode}/release`, { doc_id: patient.doctor, start_ts: patient.start_timestamp }
                             )
                             .then((res) => {
                               toast.success(res.data.message);
