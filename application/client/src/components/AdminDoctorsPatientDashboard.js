@@ -121,7 +121,7 @@ function AdminDoctorsPatientDashboard({
       axios
         .post(
           `${process.env.REACT_APP_SERVER_API_URL}/patient/${taxCode}/doctor`,
-          { doctor: newDoctor, start_ts: start_timestamp }
+          { doctor: newDoctor, prev_doctor: prevDoctor, start_ts: start_timestamp }
         )
         .then((res) => {
           setPatients((prev) =>

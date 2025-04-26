@@ -23,6 +23,7 @@ const {
   DynamoDBDocumentClient,
   PutCommand,
   GetCommand,
+  BatchGetCommand,
   QueryCommand,
   ScanCommand,
   DeleteCommand,
@@ -210,6 +211,30 @@ async function getPatientByDevice(device) {
   return scanRes.Items[0].ID_Patient;
 }
 
+async function GetDoctorByID(doctor) {
+
+  const pref = doctor.slice(0, -1)
+  const id = Number(doctor[doctor.length - 1]);
+
+  const params2 = {
+    TableName: DOC_DB,
+    Key: { Doctor_Prefix: pref, Doctor_ID: id },
+  };
+  const getRes2 = await docClient.send(new GetCommand(params2));
+  return getRes2.Item;
+}
+
+async function GetPatientByID(patient) {
+  const params = {
+    TableName: REC_DB,
+    FilterExpression: "TaxCode = :tc AND end_timestamp = :open",
+    ExpressionAttributeValues: { ":tc": patient, ":open": -1 },
+  };
+  const scanRes = await docClient.send(new ScanCommand(params));
+
+  return scanRes.Items[0];
+}
+
 server.on("message", async (topic, payload) => {
   const device = topic.split("/")[2];
   const data = JSON.parse(payload.toString());
@@ -316,6 +341,10 @@ server.on("message", async (topic, payload) => {
 
   if (!alarmFlag) return;
 
+  patient_id = await getPatientByDevice(device);
+  patient = await GetPatientByID(patient_id);
+  doctor = await GetDoctorByID(patient.doctor);
+
   for (let param in alarmFlag) {
     if (deviceAlarm[device][param].state && !alarmFlag[param].alarm) {
       deviceAlarm[device][param].state = false;
@@ -336,8 +365,8 @@ server.on("message", async (topic, payload) => {
 
       const updateAlarm = await docClient.send(new UpdateCommand(updateParams));
 
-      bot.sendMessage(924362536, `Comunicazione d'allarme!\n\
-        Il paziente associato al dispositivo <${device}> è tornato entro le soglie di salute di <${param}>.`);
+      bot.sendMessage(doctor.telegramUsername, `Comunicazione d'allarme!\n\
+Il paziente associato al dispositivo <${device}> è tornato entro le soglie di salute di <${param}>.`);
 
       io.emit(`/device/emergencies/end`, updateAlarm.Attributes);
     } else if (!deviceAlarm[device][param].state && alarmFlag[param].alarm) {
@@ -364,7 +393,7 @@ server.on("message", async (topic, payload) => {
       };
 
       await docClient.send(new PutCommand(putParams));
-      bot.sendMessage(924362536, `Comunicazione d'allarme!\n\
+      bot.sendMessage(doctor.telegramUsername, `Comunicazione d'allarme!\n\
 Il paziente associato al dispositivo <${device}> ha superato la soglia d'allarme di <${param}>.`);
 
       io.emit(`/device/emergencies/start`, { device: device, param: param });
@@ -390,7 +419,6 @@ app.post("/api/signup", async (req, res) => {
   console.log("Entered signup!");
   // controlla della api /signup
   try {
-    console.log(req.body);
     const { name, surname, taxCode, telegramUsername, password } = req.body; // dati ricevuti dal client
 
     // Controllo se l'utente è già candidato
@@ -456,9 +484,7 @@ app.post("/api/signup", async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body; // dati ricevuti dal client
-  console.log(req.body);
   let role = email.split(".")[2];
-  console.log(role);
 
   try {
     const logScanParams = {
@@ -520,29 +546,6 @@ async function getDeviceByPatient(patient) {
   return scanRes.Items[0].ID_Dev;
 }
 
-async function GetDoctorByPatient(doctor) {
-
-  // console.log(patient, start_ts);
-  // const params = {
-  //   TableName: REC_DB,
-  //   Key: { TaxCode: patient , start_timestamp: start_ts},
-  // };
-  // console.log("controllo");
-  // const getRes = await docClient.send(new GetCommand(params));
-  // const doctor = getRes.Item.doctor;
-  const pref = doctor.slice(0, -1)
-  const id = Number(doctor[doctor.length - 1]);
-  console.log(doctor);
-
-  const params2 = {
-    TableName: DOC_DB,
-    Key: { Doctor_Prefix: pref, Doctor_ID: id },
-  };
-  const getRes2 = await docClient.send(new GetCommand(params2));
-  console.log(getRes2.Item);
-  return getRes2.Item;
-}
-
 app.get("/api/doctors", async (req, res) => {
   try {
     const scanRes = await docClient.send(
@@ -589,8 +592,8 @@ app.post("/api/patient/:id/doctor", async (req, res) => {
   try {
     taxCode = req.params.id;
     start_ts = req.body.start_ts;
-
-    console.log(taxCode, start_ts, req.body.doctor);
+    newDoc = req.body.doctor;
+    prevDoc = req.body.prev_doctor;
 
     const updateParams = {
       TableName: REC_DB,
@@ -600,12 +603,24 @@ app.post("/api/patient/:id/doctor", async (req, res) => {
       },
       UpdateExpression: "SET doctor = :newDoc",
       ExpressionAttributeValues: {
-        ":newDoc": req.body.doctor,
+        ":newDoc": newDoc,
       },
       ReturnValues: "ALL_NEW",
     };
 
-    const updateDoc = await docClient.send(new UpdateCommand(updateParams));
+    await docClient.send(new UpdateCommand(updateParams));
+
+    patient = await GetPatientByID(taxCode);
+
+    doctor = await GetDoctorByID(newDoc);
+    prev = await GetDoctorByID(prevDoc);
+
+    bot.sendMessage(doctor.telegramUsername, `Comunicazione!\n\
+Ti è stato assegnato un nuovo paziente.`);
+
+    bot.sendMessage(prev.telegramUsername, `Comunicazione!\n\
+Il paziente a tuo carico:\n Nome: ${patient.name};\n Cognome: ${patient.surname};\n ID: ${patient.TaxCode};\nè stato riassegnato al dottor: ${newDoc}.`);
+      
 
     return res.json({
       message: `Dottore del paziente "${taxCode}" aggiornato con successo.`,
@@ -668,11 +683,10 @@ app.post("/api/patient/:id/release", async (req, res) => {
 
     const update = await docClient.send(new UpdateCommand(updateParams));
 
-    let doc = await GetDoctorByPatient(req.body.doc_id);
-    let chatId = doc.telegramUsername;
+    let doctor = await GetDoctorByID(req.body.doc_id);
     
-    bot.sendMessage(chatId, `Comunicazione!\n\
-Il paziente a tuo carico:\n ${lastRec.name};\n ${lastRec.surname};\n ${lastRec.TaxCode};\nè stato rilasciato.`);
+    bot.sendMessage(doctor.telegramUsername, `Comunicazione!\n\
+Il paziente a tuo carico:\n Nome: ${lastRec.name};\n Cognome: ${lastRec.surname};\n ID: ${lastRec.TaxCode};\nè stato rilasciato.`);
 
     return res.json({
       message: `Paziente "${taxCode}" dimesso con successo.`,
@@ -749,6 +763,8 @@ app.post("/api/application/:id/reject", async (req, res) => {
       return res.status(404).json({ error: "Candidatura non trovata." });
     }
 
+    bot.sendMessage(application.telegramUsername, "La tua richiesta di candidatura è stata rifiutata.\nCordiali saluti.");
+
     return res
       .status(200)
       .json({ message: "Candidatura rifiutata con successo." });
@@ -774,7 +790,6 @@ app.post("/api/application/:id/accept", async (req, res) => {
     }
 
     const { name, surname } = scanRes.Items[0];
-    console.log(name, surname);
     const userPrefix = name.toLowerCase()[0] + "." + surname.toLowerCase();
 
     const params = {
@@ -818,7 +833,8 @@ app.post("/api/application/:id/accept", async (req, res) => {
 
     await docClient.send(new PutCommand(newDoc));
 
-    bot.sendMessage()
+    bot.sendMessage(application.telegramUsername, "La tua candidatura è andata a buon fine!\n\
+Di seguito ti verranno comunicate tutte le notifiche relative ai pazienti a tuo carico.");
 
     return res.status(200).json({
       message: "Nuovo dottore accettato!",
@@ -845,7 +861,6 @@ app.post("/api/application/:id/accept", async (req, res) => {
 
 app.post("/api/addPatient", async (req, res) => {
   try {
-    console.log(req.body);
     const { name, surname, TaxCode, bed, doctor } = req.body; // dati ricevuti dal client
 
     // PRENDO L'ULTIMO RICOVERO APERTO DEL PAZIENTE INDICATO (SE ESISTE)
@@ -915,6 +930,11 @@ app.post("/api/addPatient", async (req, res) => {
         "attribute_not_exists(TaxCode) AND attribute_not_exists(start_timestamp)",
     };
     await docClient.send(new PutCommand(newPat));
+
+
+    doc = await GetDoctorByID(doctor);
+    bot.sendMessage(doc.telegramUsername, "Ti è stato assegnato un nuovo paziente!\n\
+Visualizza i suoi dati dall'applicazione.");
 
     res.json({
       message: `Ricovero del paziente "${TaxCode}" registrato con successo!`,
@@ -1167,8 +1187,6 @@ app.post("/api/device/:id/emergencies", async (req, res) => {
 app.get("/api/doctor/:id/emergencies", async (req, res) => {
   const doctor = req.params.id;
 
-  console.log(doctor);
-
   try {
     const recRes = await docClient.send(
       new ScanCommand({
@@ -1236,7 +1254,7 @@ app.get("/api/doctor/:id/emergencies", async (req, res) => {
 
     res.status(200).json(openRecords);
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).send("Errore nel recupero delle emergenze");
   }
 });
