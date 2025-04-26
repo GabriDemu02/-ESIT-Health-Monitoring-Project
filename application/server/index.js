@@ -375,7 +375,7 @@ Il paziente associato al dispositivo <${device}> ha superato la soglia d'allarme
 
   if (alarmState !== deviceAlarm[device].lastState) {
     console.log(`[${device}]: ${alarmState ? "attiva" : "disattiva"} allarme`);
-    sendAllarm(device, alarmState);
+    sendAlarm(device, alarmState);
     deviceAlarm[device].lastState = alarmState;
   }
 });
