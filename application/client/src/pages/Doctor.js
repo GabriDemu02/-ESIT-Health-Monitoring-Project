@@ -22,12 +22,25 @@ function Doctor() {
   const [search, setSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patients, setPatients] = useState({});
+  const [patientsList, setPatientsList] = useState({});
   const [emergencyPatients, setEmergencyPatients] = useState({});
   const [selectedPatientDeviceLastValues, setSelectedPatientDeviceLastValues] =
     useState({});
   const [emergencies, setEmergencies] = useState([]);
 
   useEffect(() => {
+    axios
+      .get(
+        `${process.env.REACT_APP_SERVER_API_URL}/doctor/${
+          user.Doctor_Prefix + user.Doctor_ID
+        }/emergencies`
+      )
+      .then((res) => {
+        console.log(res.data);
+        setEmergencyPatients(res.data);
+      })
+      .catch((error) => console.log(error));
+
     axios
       .get(
         `${process.env.REACT_APP_SERVER_API_URL}/doctor/${
@@ -57,9 +70,7 @@ function Doctor() {
 
     socket.on(`/device/emergencies/end`, (data) => {
       for (let patient in patients) {
-        if (patients[patient].device === data.device) {
-          // TODO: problema del cambio del testo accennato in ParameterDashboard,
-          // forse qualcosa non funziona qui
+        if (patients[patient].device === data.ID) {
           setEmergencyPatients((prev) => {
             let newState = { ...prev };
             newState[patient] = newState[patient].filter(
@@ -79,6 +90,23 @@ function Doctor() {
       socket.off(`/device/emergencies/end`);
     };
   }, [patients]);
+
+  useEffect(() => {
+    setPatientsList((_) => {
+      let newState = {};
+      Object.keys(patients).forEach((key) => {
+        let patient = patients[key];
+        if (
+          `${patient.name} ${patient.surname}`
+            .toLowerCase()
+            .includes(search.toLowerCase()) ||
+          patient.bed.toUpperCase().includes(search.toUpperCase())
+        )
+          newState[key] = patient;
+      });
+      return newState;
+    });
+  }, [patients, search]);
 
   useEffect(() => {
     if (selectedPatient) {
@@ -204,7 +232,7 @@ function Doctor() {
                   </li>
                 );
               })}
-              {Object.keys(patients).map((patient) => {
+              {Object.keys(patientsList).map((patient) => {
                 if (patient in emergencyPatients) return null;
 
                 return (
