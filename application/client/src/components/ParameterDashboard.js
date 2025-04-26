@@ -201,8 +201,8 @@ function ParameterDashboard({
 
   useEffect(() => {
     axios
-      .get(
-        `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/param/${parameterID}/history/${selectedDate}`
+      .post(
+        `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/param/${parameterID}/history/${selectedDate}`, {start_ts: patients[selectedPatient].start_timestamp}
       )
       .then((res) => {
         console.log(res.data);

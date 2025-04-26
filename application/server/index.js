@@ -56,7 +56,6 @@ const server = awsIot.device({
   host: process.env.AWS_IOT_ENDPOINT,
 });
 
-
 const TelegramBot = require('node-telegram-bot-api');
 
 const token  = process.env.BOT_TOKEN;
@@ -211,7 +210,7 @@ async function getPatientByDevice(device) {
   return scanRes.Items[0].ID_Patient;
 }
 
-async function GetDoctorByID(doctor) {
+async function getDoctorByID(doctor) {
 
   const pref = doctor.slice(0, -1)
   const id = Number(doctor[doctor.length - 1]);
@@ -224,7 +223,7 @@ async function GetDoctorByID(doctor) {
   return getRes2.Item;
 }
 
-async function GetPatientByID(patient) {
+async function getPatientByID(patient) {
   const params = {
     TableName: REC_DB,
     FilterExpression: "TaxCode = :tc AND end_timestamp = :open",
@@ -235,9 +234,17 @@ async function GetPatientByID(patient) {
   return scanRes.Items[0];
 }
 
+const is_active = {};
+const timeoutHandle = {};
+
 server.on("message", async (topic, payload) => {
   const device = topic.split("/")[2];
   const data = JSON.parse(payload.toString());
+
+  last_read_timestamp = Date.now();
+
+  if ((device in is_active) && !is_active[device]) io.emit(`/device/changeStatus`, { device: device, state: true });
+  is_active[device] = true;
 
   patient = await getPatientByDevice(device);
   if (patient === "-1") return;
@@ -342,8 +349,8 @@ server.on("message", async (topic, payload) => {
   if (!alarmFlag) return;
 
   patient_id = await getPatientByDevice(device);
-  patient = await GetPatientByID(patient_id);
-  doctor = await GetDoctorByID(patient.doctor);
+  patient = await getPatientByID(patient_id);
+  doctor = await getDoctorByID(patient.doctor);
 
   for (let param in alarmFlag) {
     if (deviceAlarm[device][param].state && !alarmFlag[param].alarm) {
@@ -407,7 +414,65 @@ Il paziente associato al dispositivo <${device}> ha superato la soglia d'allarme
     sendAlarm(device, alarmState);
     deviceAlarm[device].lastState = alarmState;
   }
+
+  // controllo se dispositivo attivo o meno
+  if (timeoutHandle[device]) clearTimeout(timeoutHandle[device]);
+
+  // Imposto un nuovo timeout per controllare inattività
+  timeoutHandle[device] = setTimeout(() => {
+    const now = parseInt(Date.now() / 1000);
+    if (now - lastReadForDevice[device] >= 10) {
+      is_active[device] = false;
+      console.log("Nessun messaggio ricevuto negli ultimi 10 secondi. Flag impostata a false.");
+      io.emit(`/device/changeStatus`, { device: device, state: false });
+    }
+  }, 10000);
+  
 });
+app.get("/api/doctor/:id/device_state", async (req, res) =>{
+  const doctor = req.params.id;
+
+  try {
+    const recRes = await docClient.send(
+      new ScanCommand({
+        TableName: REC_DB,
+        FilterExpression: "doctor = :doc AND end_timestamp = :open",
+        ExpressionAttributeValues: { ":doc": doctor, ":open": -1 },
+        ProjectionExpression: "bed",
+      })
+    );
+    const beds = recRes.Items;
+    if (beds.length === 0) return res.status(200).json({});
+  
+    // recupero device associati ai letti
+    const bedsBatch = beds.map((item) => {
+      return {
+        ID_Bed: item.bed,
+      };
+    });
+    const bedRes = await docClient.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [BED_DB]: {
+            Keys: bedsBatch,
+            ProjectionExpression: "ID_Dev",
+          },
+        },
+      })
+    );
+    const deviceItems = bedRes.Responses[BED_DB];
+    if (deviceItems.length === 0) return res.status(200).json({});
+    
+    const data = {}; 
+    deviceItems.forEach(item => { data[item.ID_Dev] = is_active[item.ID_Dev] });
+  
+    res.json(data); // registrazione conclusa senza errori
+
+  } catch (error) {
+    console.error("Problema controllo dello stato del device: ", error);
+  }
+});
+
 
 // ****** APIS INTERFACCIA UTENTE ****** //
 ///////////////////////////////////////////
@@ -610,10 +675,10 @@ app.post("/api/patient/:id/doctor", async (req, res) => {
 
     await docClient.send(new UpdateCommand(updateParams));
 
-    patient = await GetPatientByID(taxCode);
+    patient = await getPatientByID(taxCode);
 
-    doctor = await GetDoctorByID(newDoc);
-    prev = await GetDoctorByID(prevDoc);
+    doctor = await getDoctorByID(newDoc);
+    prev = await getDoctorByID(prevDoc);
 
     bot.sendMessage(doctor.telegramUsername, `Comunicazione!\n\
 Ti è stato assegnato un nuovo paziente.`);
@@ -1108,12 +1173,13 @@ function groupData(data, param, time) {
   return result;
 }
 
-app.get(
+app.post(
   "/api/device/:id/param/:param/history/:selectedDate",
   async (req, res) => {
     const device = req.params.id;
     const param = req.params.param;
     const date = req.params.selectedDate;
+    const start_ts = req.body.start_ts
 
     if (param !== "HeartRate" && param !== "BloodPressure")
       return res.status(400).json({
@@ -1121,14 +1187,19 @@ app.get(
       });
 
     const endOfTheDay = new Date(`${date}T23:59:59`).getTime() / 1000;
-    const from = new Date(`${date}T00:00`).getTime() / 1000;
+    let from = new Date(`${date}T00:00`).getTime() / 1000;
     const to = Math.min(endOfTheDay, startTimestamp - 1);
+
+    if ( start_ts > from ) from = start_ts;
 
     if (to < from) {
       return res.status(200).json({});
     }
+    
 
     try {
+      
+      
       const params = {
         TableName: DEV_DB,
         KeyConditionExpression: "ID = :id AND #ts BETWEEN :from AND :to",

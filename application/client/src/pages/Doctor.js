@@ -14,6 +14,7 @@ import doctorProfileIcon from "../assets/doctor-profile-icon.png";
 import { useAuth } from "../AuthContext";
 import io from "socket.io-client";
 import axios from "axios";
+import toast from "react-hot-toast";
 
 const socket = io(process.env.REACT_APP_SOCKET_URL);
 
@@ -24,9 +25,9 @@ function Doctor() {
   const [patients, setPatients] = useState({});
   const [patientsList, setPatientsList] = useState({});
   const [emergencyPatients, setEmergencyPatients] = useState({});
-  const [selectedPatientDeviceLastValues, setSelectedPatientDeviceLastValues] =
-    useState({});
+  const [selectedPatientDeviceLastValues, setSelectedPatientDeviceLastValues] = useState({});
   const [emergencies, setEmergencies] = useState([]);
+  const [deviceState, setDeviceState] = useState({});
 
   useEffect(() => {
     axios
@@ -51,12 +52,35 @@ function Doctor() {
         setPatients(res.data);
       })
       .catch((error) => console.log(error));
+
+      axios.get(`${process.env.REACT_APP_SERVER_API_URL}/doctor/${user.Doctor_Prefix+user.Doctor_ID}/device_state`).then(res => {
+        console.log(res.data);
+        setDeviceState(res.data);
+      }).catch (error => {
+        console.error('Errore recupero device status:', error);
+        setDeviceState(false);
+      });
   }, []);
+
+  useEffect(() => {
+    socket.on("/device/changeStatus", data => { 
+      if (data.device in deviceState) {
+        setDeviceState(prev => {
+          return {...prev, [data.device]: data.state };
+        });
+        if (!data.state)
+          setSelectedPatientDeviceLastValues({});
+      }
+    })
+
+    return () => socket.off("/device/changeStatus");
+  }, [deviceState]);
 
   useEffect(() => {
     socket.on(`/device/emergencies/start`, (data) => {
       for (let patient in patients) {
         if (patients[patient].device === data.device) {
+          toast(`Emergenza paziente ${patient}`, { icon: "⚠️" });
           setEmergencyPatients((prev) => {
             let newState = { ...prev };
             if (newState[patient]) newState[patient].push(data.param);
@@ -209,7 +233,7 @@ function Doctor() {
                         </div>
                         <div
                           className={`flex v-center font-xsm ${
-                            patients[patient].deviceStatus
+                            deviceState[patients[patient].device]
                               ? "device-active"
                               : "device-not-active"
                           }`}
@@ -222,7 +246,7 @@ function Doctor() {
                         >
                           <FontAwesomeIcon icon={faMicrochip} />
                           <span style={{ paddingLeft: "4px" }}>
-                            {patients[patient].deviceStatus
+                            {deviceState[patients[patient].device]
                               ? "Attivo"
                               : "Non Attivo"}
                           </span>
@@ -273,7 +297,7 @@ function Doctor() {
                         </div>
                         <div
                           className={`flex v-center font-xsm ${
-                            patients[patient].deviceStatus
+                            deviceState[patients[patient].device]
                               ? "device-active"
                               : "device-not-active"
                           }`}
@@ -286,7 +310,7 @@ function Doctor() {
                         >
                           <FontAwesomeIcon icon={faMicrochip} />
                           <span style={{ paddingLeft: "4px" }}>
-                            {patients[patient].deviceStatus
+                            {deviceState[patients[patient].device]
                               ? "Attivo"
                               : "Non Attivo"}
                           </span>
@@ -324,7 +348,7 @@ function Doctor() {
             <div>{patients[selectedPatient].bed}</div>
             <div
               className={`flex v-center font-xsm ${
-                patients[selectedPatient].deviceStatus
+                deviceState[patients[selectedPatient].device]
                   ? "device-active"
                   : "device-not-active"
               }`}
@@ -336,7 +360,7 @@ function Doctor() {
             >
               <FontAwesomeIcon icon={faMicrochip} />
               <span style={{ paddingLeft: "4px" }}>
-                {patients[selectedPatient].deviceStatus
+                {deviceState[patients[selectedPatient].device]
                   ? "Attivo"
                   : "Non Attivo"}
               </span>
