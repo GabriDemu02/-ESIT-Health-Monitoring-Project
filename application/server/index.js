@@ -274,14 +274,13 @@ server.on("message", async (topic, payload) => {
         state: false,
         start: undefined,
       },
+      lastState: false,
     };
 
-  let alarmActive = false;
-  let emergencyStatus = false;
+  let lastStartTime = -1;
+  let alarmState = false;
 
-  // TODO: dato che la chiave e device e timestamp, se i 2 parametri partono allo stesso momento,
-  // uno dei 2 non verrà mai salvato, risolvere questo problemino
-  for (let param in deviceAlarm[device]) {
+  for (let param in alarmFlag) {
     if (deviceAlarm[device][param].state && !alarmFlag[param].alarm) {
       deviceAlarm[device][param].state = false;
       console.log(param, "disattiva allarme");
@@ -307,6 +306,11 @@ server.on("message", async (topic, payload) => {
       deviceAlarm[device][param].state = true;
       deviceAlarm[device][param].start = Math.floor(Date.now() / 1000);
 
+      // evita che si abbia la stessa chiave [device, timestamp]
+      if (deviceAlarm[device][param].start === lastStartTime)
+        ++deviceAlarm[device][param].start;
+      lastStartTime = deviceAlarm[device][param].start;
+
       const putParams = {
         TableName: ALL_DB,
         Item: {
@@ -325,14 +329,13 @@ server.on("message", async (topic, payload) => {
       io.emit(`/device/emergencies/start`, { device: device, param: param });
     }
 
-    alarmActive ||= deviceAlarm[device][param].state;
-    emergencyStatus ||= alarmFlag[param].alarm;
+    alarmState ||= deviceAlarm[device][param].state;
   }
 
-  if (alarmActive && !emergencyStatus) {
-    sendAllarm(device, false);
-  } else if (!alarmActive && emergencyStatus) {
-    sendAllarm(device, true);
+  if (alarmState !== deviceAlarm[device].lastState) {
+    console.log(`[${device}]: ${alarmState ? "attiva" : "disattiva"} allarme`);
+    sendAllarm(device, alarmState);
+    deviceAlarm[device].lastState = alarmState;
   }
 });
 
@@ -873,56 +876,6 @@ app.get("/api/bedrooms", async (req, res) => {
   }
 });
 
-// ****** RICOVERI ****** //
-////////////////////////////
-
-async function getRicoveries() {
-  try {
-    const recScanParams = {
-      TableName: REC_DB,
-      FilterExpression: "#Att = :Val",
-      ExpressionAttributeNames: { "#Att": "end_timestamp" },
-      ExpressionAttributeValues: { ":Val": "-1" },
-    };
-
-    const scanRes = await docClient.send(new ScanCommand(recScanParams));
-
-    const patientCodes = scanRes.Items.map((item) => item.patientId);
-
-    if (!patientCodes.length) {
-      return [];
-    }
-
-    const uniquePatientCodes = [...new Set(patientCodes)];
-
-    const patBatchGetParams = {
-      RequestItems: {
-        PatientData: {
-          Keys: uniquePatientCodes.map((taxCode) => ({ taxCode })),
-        },
-      },
-    };
-
-    const batchGetRes = await docClient.send(
-      new BatchGetCommand(patBatchGetParams)
-    );
-
-    return batchGetRes.Responses[REC_DB] || [];
-  } catch (error) {
-    console.error("Errore durante il recupero dei pazienti ricoverati:", error);
-    throw error;
-  }
-}
-
-app.post("/api/recoveries", async (req, res) => {
-  try {
-    const requests = await getRicoveries();
-    res.status(200).json(requests);
-  } catch (error) {
-    res.status(500).send("Errore durante il recupero dei ricoveri.");
-  }
-});
-
 // ****** DOCTOR DASHBOARD ****** //
 ////////////////////////////////////
 
@@ -1124,9 +1077,11 @@ app.post("/api/device/:id/emergencies", async (req, res) => {
     const params = {
       TableName: ALL_DB,
       KeyConditionExpression: "ID = :id AND start_timestamp >= :ts",
+      FilterExpression: "end_timestamp <> :end",
       ExpressionAttributeValues: {
         ":id": device,
         ":ts": start_ts,
+        ":end": -1,
       },
       ScanIndexForward: false,
     };
@@ -1138,6 +1093,83 @@ app.post("/api/device/:id/emergencies", async (req, res) => {
     res
       .status(500)
       .send("Errore durante il recupero del registro delle emergenze");
+  }
+});
+
+app.get("/api/doctor/:id/emergencies", async (req, res) => {
+  const doctor = req.params.id;
+
+  console.log(doctor);
+
+  try {
+    const recRes = await docClient.send(
+      new ScanCommand({
+        TableName: REC_DB,
+        FilterExpression: "doctor = :doc AND end_timestamp = :open",
+        ExpressionAttributeValues: { ":doc": doctor, ":open": -1 },
+        ProjectionExpression: "bed",
+      })
+    );
+    const beds = recRes.Items;
+    if (beds.length === 0) return res.status(200).json({});
+
+    // recupero device associati ai letti
+    const bedsBatch = beds.map((item) => {
+      return {
+        ID_Bed: item.bed,
+      };
+    });
+    const bedRes = await docClient.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [BED_DB]: {
+            Keys: bedsBatch,
+          },
+        },
+      })
+    );
+    const bedItems = bedRes.Responses[BED_DB];
+    if (bedItems.length === 0) return res.status(200).json({});
+
+    const deviceToPatient = {};
+    for (const { ID_Dev, ID_Patient } of bedItems) {
+      if (ID_Dev && ID_Patient) {
+        deviceToPatient[ID_Dev] = ID_Patient;
+      }
+    }
+
+    // per ogni device, recupera le emrgenze non ancora concluse
+    const openRecords = {};
+    for (const device of Object.keys(deviceToPatient)) {
+      let LastEvaluatedKey;
+      do {
+        const allRes = await docClient.send(
+          new QueryCommand({
+            TableName: ALL_DB,
+            KeyConditionExpression: "ID = :dev",
+            FilterExpression: "end_timestamp = :open",
+            ExpressionAttributeValues: {
+              ":dev": device,
+              ":open": -1,
+            },
+            ProjectionExpression: "param",
+            ExclusiveStartKey: LastEvaluatedKey,
+          })
+        );
+
+        if (allRes.Items.length) {
+          const taxCodePatient = deviceToPatient[device];
+          openRecords[taxCodePatient] = allRes.Items.map((item) => item.param);
+        }
+
+        LastEvaluatedKey = allRes.LastEvaluatedKey;
+      } while (LastEvaluatedKey);
+    }
+
+    res.status(200).json(openRecords);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Errore nel recupero delle emergenze");
   }
 });
 
