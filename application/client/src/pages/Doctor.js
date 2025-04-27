@@ -135,6 +135,18 @@ function Doctor() {
   useEffect(() => {
     if (selectedPatient) {
       axios
+        .get(
+          `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/latest`
+        )
+        .then((res) => {
+          console.log(res.data);
+          setSelectedPatientDeviceLastValues(res.data);
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+
+      axios
         .post(
           `${process.env.REACT_APP_SERVER_API_URL}/device/${patients[selectedPatient].device}/emergencies`,
           { start_timestamp: patients[selectedPatient].start_timestamp },

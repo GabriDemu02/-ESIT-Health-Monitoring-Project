@@ -9,14 +9,12 @@ function Signup({ onSuccess }) {
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
   const [taxCode, setTaxCode] = useState("");
-  const [telegramUsername, settelegramUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const nameInput = useRef(null);
   const surnameInput = useRef(null);
   const taxCodeInput = useRef(null);
-  const telegramUsernameInput = useRef(null);
   const passwordInput = useRef(null);
   const confirmPasswordInput = useRef(null);
   const globalError = useRef(null);
@@ -42,13 +40,6 @@ function Signup({ onSuccess }) {
     globalError.current.innerText = "";
   };
 
-  const handletelegramUsername = (e) => {
-    settelegramUsername(e.target.value);
-    telegramUsernameInput.current.children[1].style.border = "";
-    telegramUsernameInput.current.children[2].innerText = "";
-    globalError.current.innerText = "";
-  };
-
   const handlePassword = (e) => {
     setPassword(e.target.value);
     passwordInput.current.children[1].style.border = "";
@@ -70,7 +61,6 @@ function Signup({ onSuccess }) {
     let nameTrim = name.trim();
     let surnameTrim = surname.trim();
     let taxCodeTrim = taxCode.trim();
-    let telegramUsernameTrim = telegramUsername.trim();
     let passwordTrim = password.trim();
     let confirmPasswordTrim = confirmPassword.trim();
 
@@ -95,12 +85,6 @@ function Signup({ onSuccess }) {
         taxCodeTrim.length === 0
           ? "Inserire un codice fiscale"
           : "Codice fiscale inserito non valido";
-    }
-    if (telegramUsernameTrim.length === 0) {
-      validRequest = false;
-      telegramUsernameInput.current.children[1].style.border = "2px solid red";
-      telegramUsernameInput.current.children[2].innerText =
-        "Inserire username Telegram";
     }
     let minPasswordLength = 5;
     if (!/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{5,}$/.test(passwordTrim)) {
@@ -128,13 +112,13 @@ function Signup({ onSuccess }) {
             name: nameTrim,
             surname: surnameTrim,
             taxCode: taxCodeTrim,
-            telegramUsername: telegramUsernameTrim,
+            telegramUsername: "",
             password: passwordTrim,
           },
           { headers: { "Content-Type": "application/json" } }
         )
         .then(() => {
-          onSuccess(true);
+          onSuccess(taxCodeTrim);
           navigate("/success");
         })
         .catch((error) => {
@@ -186,16 +170,6 @@ function Signup({ onSuccess }) {
               placeholder="Inserire codice fiscale"
               value={taxCode}
               onChange={handleTaxCode}
-            />
-            <div className="form-input-error"></div>
-          </div>
-          <div ref={telegramUsernameInput} className="flex f-col">
-            <label>Username Telegram:</label>
-            <input
-              type="text"
-              placeholder="Inserire username Telegram"
-              value={telegramUsername}
-              onChange={handletelegramUsername}
             />
             <div className="form-input-error"></div>
           </div>

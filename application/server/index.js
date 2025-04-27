@@ -61,12 +61,37 @@ const TelegramBot = require('node-telegram-bot-api');
 const token  = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-bot.on('message', (msg) => {
+bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const messageText = msg.text;
 
-  if (messageText === '/start') {
-    bot.sendMessage(chatId, `Welcome to the bot!`);
+  const match = messageText.match(/^\/start (.+)$/);
+  if (match) {
+    try {
+      const params = {
+        TableName: APP_DB,
+        Key: {
+          TaxCode: match[1],
+        },
+        UpdateExpression: "SET telegramUsername = :id",
+        ExpressionAttributeValues: {
+          ":id": chatId,
+        },
+        ReturnValues: "ALL_NEW",
+      }
+      await docClient.send(new UpdateCommand(params));
+
+      bot.sendMessage(chatId, `Benvenuto/a al bot di HealthMonitor!
+In questa chat riceverai l'esito della tua candidatura.
+In caso di accettazione ti verranno comunicati gli aggiornamenti riguardo:
+  Nuovi pazienti assegnati;
+  Pazienti dimessi;
+  Stati di emergenza dei pazienti.
+Ti ringraziamo per aver scelto HealthMonitor.`);
+
+    } catch (error) {
+      console.error(error);
+    }
   }
 });
 
@@ -212,8 +237,10 @@ async function getPatientByDevice(device) {
 
 async function getDoctorByID(doctor) {
 
-  const pref = doctor.slice(0, -1)
-  const id = Number(doctor[doctor.length - 1]);
+  const match = doctor.match(/^([a-z]\.[a-z]+)(\d+)$/);
+
+  const pref = match[1]
+  const id = Number(match[2]);
 
   const params2 = {
     TableName: DOC_DB,
@@ -429,6 +456,30 @@ Il paziente associato al dispositivo <${device}> ha superato la soglia d'allarme
   }, 10000);
   
 });
+
+app.get("/api/device/:id/latest", async (req, res) => {
+  const device = req.params.id;
+  
+  if (!is_active[device]) return res.status(200).json({});
+
+  try {
+    const params = {
+      TableName: DEV_DB,
+      Key: {"ID": device, "timestamp": lastReadForDevice[device] }
+    }
+
+    // qua bisogna veder cosa restituisce, poi dobbiamo ritornare un oggetto bnel formsto, (scrivimi quando hai finito in bagno, cosi te lo dico)
+    const getRes = await docClient.send(new GetCommand(params));
+
+    const data = { heartRate: getRes.Item.heart_rate, heartRateAvg: deviceAvrg[device]["Battito Cardiaco"].getAvrg(), 
+      bloodPressure: getRes.Item.blood_pressure, bloodPressureAvg: deviceAvrg[device]["Pressione Sanguigna"].getAvrg(), };
+
+    res.status(200).json(data);
+  } catch(error) {
+    console.error(error);
+  }
+});
+
 app.get("/api/doctor/:id/device_state", async (req, res) =>{
   const doctor = req.params.id;
 
@@ -748,7 +799,7 @@ app.post("/api/patient/:id/release", async (req, res) => {
 
     const update = await docClient.send(new UpdateCommand(updateParams));
 
-    let doctor = await GetDoctorByID(req.body.doc_id);
+    let doctor = await getDoctorByID(req.body.doc_id);
     
     bot.sendMessage(doctor.telegramUsername, `Comunicazione!\n\
 Il paziente a tuo carico:\n Nome: ${lastRec.name};\n Cognome: ${lastRec.surname};\n ID: ${lastRec.TaxCode};\nè stato rilasciato.`);
@@ -882,13 +933,14 @@ app.post("/api/application/:id/accept", async (req, res) => {
       return res.status(404).json({ error: "Elemento non trovato" });
     }
 
+    let email = userPrefix + userID + "@hm.doctor.it"
     const newDoc = {
       TableName: DOC_DB,
       Item: {
         Doctor_Prefix: userPrefix,
         Doctor_ID: userID,
         taxCode: application.TaxCode,
-        email: userPrefix + userID + "@hm.doctor.it",
+        email: email,
         name: application.name,
         surname: application.surname,
         telegramUsername: application.telegramUsername,
@@ -898,8 +950,11 @@ app.post("/api/application/:id/accept", async (req, res) => {
 
     await docClient.send(new PutCommand(newDoc));
 
-    bot.sendMessage(application.telegramUsername, "La tua candidatura è andata a buon fine!\n\
-Di seguito ti verranno comunicate tutte le notifiche relative ai pazienti a tuo carico.");
+    bot.sendMessage(application.telegramUsername, `La tua candidatura è andata a buon fine!
+Le tue credenziali di accesso sono le seguenti:
+  Email: ${email};
+  Password: ${application.password}.
+In questa chat ti verranno comunicate tutte le notifiche relative ai pazienti a tuo carico.`);
 
     return res.status(200).json({
       message: "Nuovo dottore accettato!",
@@ -997,7 +1052,7 @@ app.post("/api/addPatient", async (req, res) => {
     await docClient.send(new PutCommand(newPat));
 
 
-    doc = await GetDoctorByID(doctor);
+    doc = await getDoctorByID(doctor);
     bot.sendMessage(doc.telegramUsername, "Ti è stato assegnato un nuovo paziente!\n\
 Visualizza i suoi dati dall'applicazione.");
 

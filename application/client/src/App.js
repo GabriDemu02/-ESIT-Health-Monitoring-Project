@@ -12,7 +12,7 @@ import { useState } from "react";
 import { Toaster } from "react-hot-toast";
 
 function App() {
-  const [successPageAccess, setSuccessPageAccess] = useState(false);
+  const [successPageAccess, setSuccessPageAccess] = useState("");
 
   return (
     <>
@@ -47,7 +47,7 @@ function App() {
               path="/success"
               element={
                 <ConstrainedRoute access={successPageAccess}>
-                  <Success />
+                  <Success taxCode={successPageAccess} />
                 </ConstrainedRoute>
               }
             />

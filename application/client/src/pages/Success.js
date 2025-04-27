@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-function Success() {
+function Success({taxCode}) {
   return (
     <div
       className="flex h-center v-center"
@@ -12,8 +12,8 @@ function Success() {
         </div>
         <div style={{ textAlign: "justify", margin: "24px 0" }}>
           La tua candidatura è stata inoltrata nel sistema di{" "}
-          <b>healthmonitor</b>, l'<b>esito</b> della tua proposta verrà inviato
-          nel <b>contatto Telegram</b> fornito in fase di registrazione.
+          <b>healthmonitor</b>, l'<b>esito</b> della tua proposta verrà inviata
+          nel seguente <a href={`https://t.me/HealthMonitorCommunicationBot?start=${taxCode}`} target="_blank">link</a>.
         </div>
         <div style={{ width: "100%", fontWeight: "bold" }}>
           <Link to="/login">Torna alla schermata di Accesso</Link>
